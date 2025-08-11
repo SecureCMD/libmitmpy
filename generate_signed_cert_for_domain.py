@@ -1,10 +1,24 @@
 import datetime
+import os
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
+CERT_CACHE_DIR = "certs"
+os.makedirs(CERT_CACHE_DIR, exist_ok=True)
+
+def get_or_generate_cert(domain):
+    cert_path = os.path.join(CERT_CACHE_DIR, f"{domain}.crt.pem")
+    key_path = os.path.join(CERT_CACHE_DIR, f"{domain}.key.pem")
+    if not os.path.exists(cert_path) or not os.path.exists(key_path):
+        cert_pem, key_pem = generate_signed_cert(domain)
+        with open(cert_path, "wb") as f:
+            f.write(cert_pem)
+        with open(key_path, "wb") as f:
+            f.write(key_pem)
+    return cert_path, key_path
 
 def generate_signed_cert(domain, ca_cert_path="encripton.pem", ca_key_path="encripton.key"):
     # Load CA key and cert

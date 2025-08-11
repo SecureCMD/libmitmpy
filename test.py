@@ -1,12 +1,14 @@
 import requests
 
 resp = requests.get(
-    "http://geoapi.es",
+    "https://geoapi.es",
     proxies=dict(
         http="socks5h://localhost:9090",
         https="socks5h://localhost:9090",
     ),
-    headers={'Accept-Encoding': 'identity'}
+    headers={'Accept-Encoding': 'identity'},
+    #verify="encripton.pem"
+    verify="/Users/alexandernst/.mitmproxy/mitmproxy-ca.pem"
 )
 
 print(resp.text)

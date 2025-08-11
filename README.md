@@ -11,3 +11,5 @@ pip install -r requirements.txt
 
 python generate_root_cert.py
 sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain encripton.pem
+
+4.

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
  Small Socks5 Proxy Server in Python
  from https://github.com/MisterDaneel/
@@ -8,6 +9,7 @@ import select
 
 # Network
 import socket
+import ssl
 import sys
 
 # System
@@ -16,6 +18,8 @@ from signal import SIGINT, SIGTERM, signal
 from struct import pack, unpack
 from threading import Thread, active_count
 from time import sleep
+
+from generate_signed_cert_for_domain import get_or_generate_cert
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -106,6 +110,31 @@ def proxy_loop(socket_src, socket_dst):
             error("Loop failed", err)
             return
 
+def mitm_tls_proxy_loop(client_ssl, server_ssl):
+    while not EXIT.get_status():
+        try:
+            reader, _, _ = select.select([client_ssl, server_ssl], [], [], 1)
+        except select.error as err:
+            error("Select failed", err)
+            return
+        if not reader:
+            continue
+        try:
+            for sock in reader:
+                data = sock.recv(BUFSIZE)
+                if not data:
+                    return
+                if sock is server_ssl:
+                    logger.info("Receiving data")
+                    logger.info(data)
+                    client_ssl.send(data)
+                else:
+                    logger.info("Sending data")
+                    logger.info(data)
+                    server_ssl.send(data)
+        except Exception as e:
+            error("TLS MITM loop error", e)
+
 
 def connect_to_dst(dst_addr, dst_port):
     """ Connect to desired destination """
@@ -195,7 +224,27 @@ def request(wrapper):
         return
     # start proxy
     if rep == b'\x00':
-        proxy_loop(wrapper, socket_dst)
+        if dst[1] == 443:
+            domain = dst[0].decode() if isinstance(dst[0], bytes) else dst[0]
+            cert_path, key_path = get_or_generate_cert(domain)
+
+            # wrap client socket with fake cert
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(certfile=cert_path, keyfile=key_path)
+            client_ssl = context.wrap_socket(wrapper, server_side=True)
+
+            # wrap server socket with default client-side SSL
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            server_ssl = ctx.wrap_socket(socket_dst, server_hostname=domain)
+
+            mitm_tls_proxy_loop(client_ssl, server_ssl)
+
+            client_ssl.close()
+            server_ssl.close()
+        else:
+            proxy_loop(wrapper, socket_dst)
     if wrapper != 0:
         wrapper.close()
     if socket_dst != 0:
