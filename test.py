@@ -7,8 +7,8 @@ resp = requests.get(
         https="socks5h://localhost:9090",
     ),
     headers={'Accept-Encoding': 'identity'},
-    #verify="encripton.pem"
-    verify="/Users/alexandernst/.mitmproxy/mitmproxy-ca.pem"
+    verify="encripton.pem"
+    # verify="/Users/alexandernst/.mitmproxy/mitmproxy-ca.pem"
 )
 
 print(resp.text)

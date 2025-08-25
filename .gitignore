@@ -1,3 +1,6 @@
 .venv
 encripton.key
 encripton.pem
+*.pyc
+__pycache__
+certs/
