@@ -80,8 +80,8 @@ def generate_signed_cert(domain, ca_cert_path="encripton.pem", ca_key_path="encr
     return cert_pem, key_pem
 
 # Example usage:
-cert_pem, key_pem = generate_signed_cert("geoapi.es")
-with open("geoapi_cert.pem", "wb") as f:
-    f.write(cert_pem)
-with open("geoapi_key.pem", "wb") as f:
-    f.write(key_pem)
+# cert_pem, key_pem = generate_signed_cert("geoapi.es")
+# with open("geoapi_cert.pem", "wb") as f:
+#     f.write(cert_pem)
+# with open("geoapi_key.pem", "wb") as f:
+#     f.write(key_pem)
