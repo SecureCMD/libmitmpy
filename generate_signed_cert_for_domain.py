@@ -18,6 +18,9 @@ def get_or_generate_cert(domain):
             f.write(cert_pem)
         with open(key_path, "wb") as f:
             f.write(key_pem)
+
+    # TODO: Check if the cert is actually valid. It might have expired. If that
+    # is the case, then delete the file and generate it again
     return cert_path, key_path
 
 def generate_signed_cert(domain, ca_cert_path="encripton.pem", ca_key_path="encripton.key"):
