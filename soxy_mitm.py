@@ -81,6 +81,7 @@ class Soxy():
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock = SafeSocket(sock)
             sock.settimeout(TIMEOUT_SOCKET)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         except socket.error as err:
             self.error("Failed to create socket", err)
             raise Exception
