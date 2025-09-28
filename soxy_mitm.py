@@ -69,7 +69,7 @@ class Soxy():
             raise Exception
 
 
-    def _create_socket(self) -> socket.socket:
+    def _create_socket(self) -> SafeSocket:
         """ Create an INET, STREAMing socket """
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -87,14 +87,14 @@ class Soxy():
         # | VER | NMETHODS | METHODS |
         # +-----+----------+---------+
         try:
-            header = conn_socket.recv(2)
+            header = conn_socket.recvall(2)
             ver, nmethods = header[0:1], header[1]
             if ver != VER or nmethods == 0:
                 conn_socket.sendall(ver + M_NOTAVAILABLE)
                 conn_socket.close()
                 return
             else:
-                methods = conn_socket.recv(nmethods)
+                methods = conn_socket.recvall(nmethods)
                 if M_NOAUTH not in methods:
                     logger.warning("We support only M_NOAUTH method, aborting connection and closing socket...")
                     conn_socket.sendall(VER + M_NOTAVAILABLE)
@@ -124,7 +124,7 @@ class Soxy():
         # | VER | CMD | RSV | ATYP | DST.ADDR | DST.PORT |
         # +-----+-----+-----+------+----------+----------+
         try:
-            header = conn_socket.recv(4)
+            header = conn_socket.recvall(4)
             ver, cmd, rsv, atyp = header[0:1], header[1:2], header[2:3], header[3:4]
         except ConnectionResetError:
             if conn_socket != 0:
@@ -135,16 +135,16 @@ class Soxy():
             return "", 0
 
         if atyp == ATYP_IPV4:
-            target = conn_socket.recv(6)
+            target = conn_socket.recvall(6)
             dst_addr = socket.inet_ntoa(target[:-2])
             dst_port = unpack('>H', target[-2:])[0]
         elif atyp == ATYP_DOMAINNAME:
-            size = conn_socket.recv(1)
-            target = conn_socket.recv(size[0] + 2)
+            size = conn_socket.recvall(1)
+            target = conn_socket.recvall(size[0] + 2)
             dst_addr = target[0:-2]
             dst_port = unpack('>H', target[-2:])[0]
         elif atyp == ATYP_IPV6:
-            target = conn_socket.recv(16)
+            target = conn_socket.recvall(16)
             dst_addr = socket.inet_ntop(target[:-2])
             dst_port = unpack('>H', target[-2:])[0]
         else:
@@ -153,12 +153,12 @@ class Soxy():
         return dst_addr, dst_port
 
 
-    def _connect_to_dst(self, conn_socket: socket.socket, dst_addr: str, dst_port: int):
+    def _connect_to_dst(self, conn_socket: socket.socket, dst_addr: str, dst_port: int) -> SafeSocket:
         # Server Reply
         # +-----+-----+-----+------+----------+----------+
         # | VER | REP | RSV | ATYP | BND.ADDR | BND.PORT |
         # +-----+-----+-----+------+----------+----------+
-        socket_dst = self._create_socket()
+        socket_dst: SafeSocket = self._create_socket()
 
         try:
             socket_dst.connect((dst_addr, dst_port))
@@ -274,7 +274,7 @@ class Soxy():
         logger.info("Waiting for connection...")
         conn_socket, addr = self.main_socket.accept()
         logger.info(f"Got connection from {addr}")
-        return conn_socket, addr
+        return SafeSocket(conn_socket), addr
 
 
     def close(self):
