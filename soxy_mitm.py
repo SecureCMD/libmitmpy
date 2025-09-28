@@ -1,18 +1,19 @@
 import logging
-import select
 
 # Network
 import socket
 import ssl
 import sys
 from datetime import datetime as dt
+
 # System
 from signal import SIGINT, SIGTERM, signal
 from struct import pack, unpack
-from threading import Thread, active_count
+from threading import active_count
 from time import sleep
 from typing import Tuple
 
+from autothread import AutoThread
 from generate_signed_cert_for_domain import get_or_generate_cert
 from safe_socket import SafeSocket
 
@@ -126,7 +127,7 @@ class Soxy():
         return True
 
 
-    def _get_request_details(self, conn_socket: socket.socket) -> Tuple[str, int]:
+    def _get_request_details(self, conn_socket: socket.socket) -> Tuple[bytes, int]:
         # +-----+-----+-----+------+----------+----------+
         # | VER | CMD | RSV | ATYP | DST.ADDR | DST.PORT |
         # +-----+-----+-----+------+----------+----------+
@@ -136,10 +137,10 @@ class Soxy():
         except ConnectionResetError:
             if conn_socket != 0:
                 conn_socket.close()
-            return "", 0
+            return b"", 0
 
         if ver != VER or cmd != CMD_CONNECT or rsv != b'\x00':
-            return "", 0
+            return b"", 0
 
         if atyp == ATYP_IPV4:
             target = conn_socket.recvall(6)
@@ -155,7 +156,7 @@ class Soxy():
             dst_addr = socket.inet_ntop(target[:-2])
             dst_port = unpack('>H', target[-2:])[0]
         else:
-            return "", 0
+            return b"", 0
 
         return dst_addr, dst_port
 
@@ -187,40 +188,25 @@ class Soxy():
         conn_socket.sendall(reply)
         return socket_dst
 
+    def _pipe(self, reader: SafeSocket, writer: SafeSocket):
+        try:
+            while not self.halt:
+                logger.info("Receiving data")
+                data = reader.recv(BUFSIZE)
+                if not data:
+                    logger.info("No more data to receive!")
+                    break
+                logger.info(f"Received {data[0:10]}... ({len(data)} bytes)")
 
-    def _proxy_loop(
-            self,
-            socket_src: socket.socket | ssl.SSLSocket,
-            socket_dst: socket.socket | ssl.SSLSocket
-        ):
-        """ Wait for network activity """
-        while not self.halt:
-            try:
-                reader, _, _ = select.select([socket_src, socket_dst], [], [], 1)
-            except select.error as err:
-                self.error("Select failed", err)
-                return
-            if not reader:
-                continue
-            try:
-                for sock in reader:
-                    data = sock.recv(BUFSIZE)
-                    if not data:
-                        return
-                    if sock is socket_dst:
-                        logger.info("Receiving data")
-                        logger.info(data)
-                        socket_src.send(data)
-                    else:
-                        logger.info("Sending data")
-                        logger.info(data)
-                        socket_dst.send(data)
-            except Exception as e:
-                self.error("Loop failed", e)
-                return
+                logger.info("Sending data...")
+                writer.sendall(data)
+        except (OSError, ssl.SSLError):
+            pass
+        finally:
+            reader.close()
+            writer.close()
 
-
-    def handle_conn_socket(self, conn_socket: socket.socket):
+    def handle_conn_socket(self, conn_socket: SafeSocket):
         """
         The client connects to the server and sends a header that contains the
         protocol version and the auth methods that it supports. Then the server
@@ -229,8 +215,6 @@ class Soxy():
         """
 
         logger.info("Handling conn socket...")
-
-        conn_socket.setblocking(1) # ????
 
         handshake = self._socket_handshake(conn_socket)
 
@@ -264,7 +248,7 @@ class Soxy():
             c_ctx.load_cert_chain(certfile=cert_path, keyfile=key_path)
             conn_socket = c_ctx.wrap_socket(conn_socket, server_side=True)
             # SSL and timeouts are a nightmare. Just disable it completely and
-            # let the proxy lopp handle any fuckups
+            # let the proxy loop handle any fuckups
             conn_socket.settimeout(None)
             conn_socket = SafeSocket(conn_socket)
 
@@ -274,16 +258,20 @@ class Soxy():
             s_ctx.verify_mode = ssl.CERT_NONE
             socket_dst = s_ctx.wrap_socket(socket_dst, server_hostname=domain)
             # SSL and timeouts are a nightmare. Just disable it completely and
-            # let the proxy lopp handle any fuckups
+            # let the proxy loop handle any fuckups
             socket_dst.settimeout(None)
             socket_dst = SafeSocket(socket_dst)
 
-        self._proxy_loop(conn_socket, socket_dst)
+        t1 = AutoThread(target=self._pipe, args=(conn_socket, socket_dst))
+        t2 = AutoThread(target=self._pipe, args=(socket_dst, conn_socket))
+        t1.join()
+        t2.join()
+        logger.info("End for proxy loop!")
 
         conn_socket.close()
         socket_dst.close()
 
-    def wait_for_connection(self):
+    def wait_for_connection(self) -> Tuple[SafeSocket, Tuple[bytes, int]]:
         logger.info("Waiting for connection...")
         conn_socket, addr = self.main_socket.accept()
         logger.info(f"Got connection from {addr}")
@@ -335,5 +323,4 @@ while not STATE.exit:
         soxy.close()
         sys.exit(0)
 
-    recv_thread = Thread(target=soxy.handle_conn_socket, args=[conn_socket])
-    recv_thread.start()
+    recv_thread = AutoThread(target=soxy.handle_conn_socket, args=[conn_socket])

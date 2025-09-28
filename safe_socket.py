@@ -55,6 +55,9 @@ class SafeSocket:
     def setblocking(self, *args, **kwargs):
         return self._sock.setblocking(*args, **kwargs)
 
+    def recv(self, *args, **kwargs):
+        return self._sock.recv(*args, **kwargs)
+
     def recvall(self, n: int) -> bytes:
         """
         Read exactly n bytes from the underlying socket.
