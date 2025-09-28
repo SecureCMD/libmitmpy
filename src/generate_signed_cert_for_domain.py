@@ -33,7 +33,7 @@ def is_cert_valid(cert_path: str) -> bool:
             cert = x509.load_pem_x509_certificate(f.read())
 
         now = datetime.now(timezone.utc)
-        return cert.not_valid_before <= now <= cert.not_valid_after
+        return cert.not_valid_before_utc <= now <= cert.not_valid_after_utc
     except Exception:
         # Invalid file or corrupt cert
         return False
