@@ -1,5 +1,5 @@
-import datetime
 import os
+from datetime import datetime, timedelta, timezone
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -12,7 +12,11 @@ os.makedirs(CERT_CACHE_DIR, exist_ok=True)
 def get_or_generate_cert(domain):
     cert_path = os.path.join(CERT_CACHE_DIR, f"{domain}.crt.pem")
     key_path = os.path.join(CERT_CACHE_DIR, f"{domain}.key.pem")
-    if not os.path.exists(cert_path) or not os.path.exists(key_path):
+    if (
+        not os.path.exists(cert_path)
+        or not os.path.exists(key_path)
+        or not is_cert_valid(cert_path)
+    ):
         cert_pem, key_pem = generate_signed_cert(domain)
         with open(cert_path, "wb") as f:
             f.write(cert_pem)
@@ -22,6 +26,17 @@ def get_or_generate_cert(domain):
     # TODO: Check if the cert is actually valid. It might have expired. If that
     # is the case, then delete the file and generate it again
     return cert_path, key_path
+
+def is_cert_valid(cert_path: str) -> bool:
+    try:
+        with open(cert_path, "rb") as f:
+            cert = x509.load_pem_x509_certificate(f.read())
+
+        now = datetime.now(timezone.utc)
+        return cert.not_valid_before <= now <= cert.not_valid_after
+    except Exception:
+        # Invalid file or corrupt cert
+        return False
 
 def generate_signed_cert(domain, ca_cert_path="encripton.pem", ca_key_path="encripton.key"):
     # Load CA key and cert
@@ -44,8 +59,8 @@ def generate_signed_cert(domain, ca_cert_path="encripton.pem", ca_key_path="encr
         .issuer_name(ca_cert.subject)
         .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before(datetime.datetime.utcnow())
-        .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=30))
+        .not_valid_before(datetime.now(timezone.utc))
+        .not_valid_after(datetime.now(timezone.utc) + timedelta(days=30))
         .add_extension(
             x509.SubjectAlternativeName([x509.DNSName(domain)]),
             critical=False,
