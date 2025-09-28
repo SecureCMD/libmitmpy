@@ -262,6 +262,9 @@ class Soxy():
             c_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             c_ctx.load_cert_chain(certfile=cert_path, keyfile=key_path)
             conn_socket = c_ctx.wrap_socket(conn_socket, server_side=True)
+            # SSL and timeouts are a nightmare. Just disable it completely and
+            # let the proxy lopp handle any fuckups
+            conn_socket.settimeout(None)
             conn_socket = SafeSocket(conn_socket)
 
             # wrap server socket with default client-side SSL
@@ -269,6 +272,9 @@ class Soxy():
             s_ctx.check_hostname = False
             s_ctx.verify_mode = ssl.CERT_NONE
             socket_dst = s_ctx.wrap_socket(socket_dst, server_hostname=domain)
+            # SSL and timeouts are a nightmare. Just disable it completely and
+            # let the proxy lopp handle any fuckups
+            socket_dst.settimeout(None)
             socket_dst = SafeSocket(socket_dst)
 
         self._proxy_loop(conn_socket, socket_dst)
