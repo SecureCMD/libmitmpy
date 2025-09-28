@@ -1,37 +1,27 @@
 import logging
-
 # Network
 import socket
 import ssl
 import sys
-from datetime import datetime as dt
-
 # System
-from signal import SIGINT, SIGTERM, signal
 from struct import pack, unpack
 from typing import Tuple
 
 from autothread import AutoThread
-from generate_signed_cert_for_domain import get_or_generate_cert
+from certs_manager import Manager
 from safe_socket import SafeSocket
-
-logging.basicConfig(
-    format='[%(asctime)s][%(threadName)s %(thread)d] %(levelname)s:%(filename)s:%(funcName)s:%(lineno)d %(message)s',
-    level=logging.INFO,
-    datefmt="%H:%M:%S.%f"
-)
-logging.Formatter.formatTime = lambda _, r, f: dt.fromtimestamp(r.created).strftime(f)
 
 logger = logging.getLogger(__name__)
 
 #
 # Configuration
 #
-MAX_THREADS = 1 # 200
+CERTS_PATH = "certs"
+ROOT_CERT = "encripton.pem"
+ROOT_KEY = "encripton.key"
+
 BUFSIZE = 2048
 TIMEOUT_SOCKET = 5
-LOCAL_ADDR = '0.0.0.0'
-LOCAL_PORT = 9090
 
 # --- Version of the protocol ---
 VER = b'\x05' # PROTOCOL VERSION
@@ -53,6 +43,12 @@ class Soxy():
         self.local_addr = local_addr
         self.local_port = local_port
 
+        # Configure root certs
+        self.cmanager = Manager(cert_cache_dir=CERTS_PATH, root_cert=ROOT_CERT, root_key=ROOT_KEY)
+        if not self.cmanager.is_cert_valid(ROOT_CERT):
+            self.cmanager.create_root_cert()
+
+        # Creat the main socket
         self.main_socket = self._create_socket()
 
         # Bind the socket to address and listen for connections made to the socket
@@ -72,7 +68,6 @@ class Soxy():
             self.main_socket.close()
             self.halt = True
             raise Exception
-
 
     def _create_socket(self) -> SafeSocket:
         """ Create an INET, STREAMing socket """
@@ -239,7 +234,7 @@ class Soxy():
         if dst_port == 443:
             domain = dst_addr.decode() if isinstance(dst_addr, bytes) else dst_addr
             # logger.info(f"Intercepting TCP packet for {domain}")
-            cert_path, key_path = get_or_generate_cert(domain)
+            cert_path, key_path = self.cmanager.get_or_generate_cert(domain)
 
             # wrap client socket with fake cert
             c_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -264,7 +259,6 @@ class Soxy():
         t2 = AutoThread(target=self._pipe, args=(socket_dst, conn_socket))
         t1.join()
         t2.join()
-        logger.info("End for proxy loop!")
 
         conn_socket.close()
         socket_dst.close()
@@ -275,45 +269,24 @@ class Soxy():
         logger.info(f"Got connection from {addr}")
         return SafeSocket(conn_socket), addr
 
+    def run(self):
+        while not self.halt:
+            try:
+                conn_socket, addr = self.wait_for_connection()
+            except socket.timeout:
+                continue
+            except socket.error:
+                self.stop()
+                continue
+            except TypeError:
+                self.stop()
+                sys.exit(0)
 
-    def close(self):
+            AutoThread(target=self.handle_conn_socket, args=[conn_socket])
+
+    def stop(self):
         try:
             self.halt = True
             self.main_socket.close()
         except Exception:
             pass
-
-
-
-
-######### main
-
-class Status:
-    def __init__(self):
-        self.exit = False
-
-STATE = Status()
-
-def exit_handler(signum, frame):
-    soxy.close()
-    STATE.exit = True
-
-signal(SIGINT, exit_handler)
-signal(SIGTERM, exit_handler)
-
-
-soxy = Soxy(local_addr=LOCAL_ADDR, local_port=LOCAL_PORT)
-
-while not STATE.exit:
-    try:
-        conn_socket, addr = soxy.wait_for_connection()
-    except socket.timeout:
-        continue
-    except socket.error:
-        soxy.close()
-        continue
-    except TypeError:
-        soxy.close()
-        sys.exit(0)
-
-    recv_thread = AutoThread(target=soxy.handle_conn_socket, args=[conn_socket])

@@ -5,11 +5,9 @@
 
 import logging
 import select
-
 # Network
 import socket
 import sys
-
 # System
 import traceback
 from signal import SIGINT, SIGTERM, signal
@@ -323,8 +321,3 @@ def main():
         recv_thread = Thread(target=connection, args=(wrapper, ))
         recv_thread.start()
     new_socket.close()
-
-
-EXIT = ExitStatus()
-if __name__ == '__main__':
-    main()

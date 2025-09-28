@@ -7,9 +7,7 @@ source .venv/bin/activate
 
 pip install -r requirements.txt
 
-3. Generate root cert and install in OS CA
+3. Run it
 
-python generate_root_cert.py
-sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain encripton.pem
-
-4.
+cd src
+python main.py
