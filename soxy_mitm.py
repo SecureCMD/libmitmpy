@@ -5,7 +5,7 @@ import select
 import socket
 import ssl
 import sys
-
+from datetime import datetime as dt
 # System
 from signal import SIGINT, SIGTERM, signal
 from struct import pack, unpack
@@ -16,8 +16,14 @@ from typing import Tuple
 from generate_signed_cert_for_domain import get_or_generate_cert
 from safe_socket import SafeSocket
 
+logging.basicConfig(
+    format='[%(asctime)s][%(threadName)s %(thread)d] %(levelname)s:%(filename)s:%(funcName)s:%(lineno)d %(message)s',
+    level=logging.INFO,
+    datefmt="%H:%M:%S.%f"
+)
+logging.Formatter.formatTime = lambda _, r, f: dt.fromtimestamp(r.created).strftime(f)
+
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 #
 # Configuration
