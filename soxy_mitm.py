@@ -9,8 +9,6 @@ from datetime import datetime as dt
 # System
 from signal import SIGINT, SIGTERM, signal
 from struct import pack, unpack
-from threading import active_count
-from time import sleep
 from typing import Tuple
 
 from autothread import AutoThread
@@ -297,8 +295,6 @@ class Status:
 STATE = Status()
 
 def exit_handler(signum, frame):
-    """ Signal handler called with signal, exit script """
-    logger.info('Signal handler called with signal', signum)
     soxy.close()
     STATE.exit = True
 
@@ -309,9 +305,6 @@ signal(SIGTERM, exit_handler)
 soxy = Soxy(local_addr=LOCAL_ADDR, local_port=LOCAL_PORT)
 
 while not STATE.exit:
-    if active_count() > MAX_THREADS:
-        sleep(3)
-        continue
     try:
         conn_socket, addr = soxy.wait_for_connection()
     except socket.timeout:
