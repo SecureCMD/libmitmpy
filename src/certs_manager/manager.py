@@ -20,7 +20,6 @@ class Manager:
 
     def is_cert_valid(self, cert_name: str) -> bool:
         try:
-            print((self.cert_cache_dir / cert_name).resolve())
             with open(self.cert_cache_dir / cert_name, "rb") as f:
                 cert = x509.load_pem_x509_certificate(f.read())
 
