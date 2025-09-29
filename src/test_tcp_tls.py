@@ -4,7 +4,7 @@ import socks
 
 host = 'tcpbin.com'
 port = 4243
-pem = "encripton.pem"
+pem = "certs/encripton.pem"
 # pem = "/Users/alexandernst/.mitmproxy/mitmproxy-ca.pem"
 
 proxy_host = "localhost"
@@ -18,4 +18,4 @@ context = ssl.create_default_context(cafile=pem)
 with context.wrap_socket(sock, server_hostname=host) as s:
     s.sendall(b'hello world\n')
     data = s.recv(1024)
-    print(f"Received: {data.decode()}")
+    print(f"Received back: {data.decode()}")

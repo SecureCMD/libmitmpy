@@ -88,6 +88,36 @@ class SafeSocket:
             buf.extend(chunk)
         return bytes(buf)
 
+    def peekall(self, n: int) -> bytes:
+        """
+        Peek exactly n bytes from the underlying socket.
+        Returns the bytes read; if EOF is reached before `n` bytes, returns fewer bytes.
+        Raises socket.timeout / OSError as propagated by the underlying socket.
+        Handles SSLWantRead/Write by retrying.
+        """
+        buf = bytearray()
+        while len(buf) < n:
+            try:
+                chunk = self._sock.recv(n - len(buf), socket.MSG_PEEK)
+            except Exception as exc:
+                logger.exception()
+                # handle non-blocking SSL intermediate exceptions by retrying
+                try:
+                    want_read = isinstance(exc, ssl.SSLWantReadError)
+                    want_write = isinstance(exc, ssl.SSLWantWriteError)
+                except Exception:
+                    want_read = want_write = False
+
+                if want_read or want_write:
+                    continue
+                # re-raise socket.timeout and other OSErrors
+                raise
+            if not chunk:
+                # EOF
+                break
+            buf.extend(chunk)
+        return bytes(buf)
+
     # proxy to the real socket for everything else
     def __getattr__(self, name):
         return getattr(self._sock, name)
