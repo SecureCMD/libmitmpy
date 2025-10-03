@@ -3,7 +3,7 @@ import socket
 from struct import pack, unpack
 from typing import Tuple
 
-from safe_socket import SafeSocket
+from core import SafeSocket
 
 # --- Version of the protocol ---
 VER = b'\x05' # PROTOCOL VERSION

@@ -3,10 +3,9 @@ import socket
 import sys
 from typing import Tuple
 
-from autothread import AutoThread
 from cert_manager import CertManager
+from core import AutoThread, SafeSocket
 from net import socks, ssl, tls
-from safe_socket import SafeSocket
 
 logger = logging.getLogger(__name__)
 

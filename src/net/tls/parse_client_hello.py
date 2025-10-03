@@ -2,7 +2,7 @@ import logging
 from struct import unpack
 from typing import Tuple
 
-from safe_socket import SafeSocket
+from core import SafeSocket
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,7 @@
 import logging
 import ssl
 
-from safe_socket import SafeSocket
+from core import SafeSocket
 
 logger = logging.getLogger(__name__)
 

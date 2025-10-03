@@ -2,8 +2,9 @@ import logging
 import ssl
 import weakref
 
-from autothread import AutoThread
-from safe_socket import SafeSocket
+from core import AutoThread, SafeSocket
+from parsers.http import HTTPParser
+from transformers.http import HTTPTransformer
 
 BUFSIZE = 2048
 
@@ -16,6 +17,14 @@ class Pipe:
 
         self.conn_socket = conn_socket
         self.socket_dst = socket_dst
+
+        self.buffers = {
+            (self.conn_socket, self.socket_dst): bytearray(),
+            (self.socket_dst, self.conn_socket): bytearray(),
+        }
+
+        self.parser = HTTPParser()
+        self.transformer = HTTPTransformer()
 
     def start(self):
         t1 = AutoThread(target=self.process, args=(self.conn_socket, self.socket_dst))
@@ -30,18 +39,31 @@ class Pipe:
         self._halt = True
 
     def process(self, reader: SafeSocket, writer: SafeSocket):
+        buf = self.buffers[(reader, writer)]
+
         try:
             while not self._halt:
                 logger.info("Receiving data")
                 data = reader.recv(BUFSIZE)
                 if not data:
                     logger.info("No more data to receive!")
-                    # notify parent?
                     break
+
+                buf.extend(data)
                 logger.info(f"Received {data[0:10]}... ({len(data)} bytes)")
 
-                logger.info("Sending data...")
-                writer.sendall(data)
+                while True:
+                    parsed, consumed = self.parser.parse(buf)
+                    if not parsed:
+                        break
+
+                    transformed = self.transformer.transform(parsed)
+
+                    logger.info("Sending data...")
+                    writer.sendall(transformed)
+
+                    # drop consumed bytes from buffer
+                    del buf[:consumed]
         except (OSError, ssl.SSLError):
             pass
         finally:
