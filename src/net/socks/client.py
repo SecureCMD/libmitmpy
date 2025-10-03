@@ -20,7 +20,7 @@ ATYP_IPV6 = b'\x04' # IPv6 address
 
 logger = logging.getLogger(__name__)
 
-class SocksClient:
+class Client:
     def __init__(self, socket: SafeSocket):
         self.socket = socket
 

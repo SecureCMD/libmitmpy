@@ -5,7 +5,7 @@ from typing import Tuple
 
 from autothread import AutoThread
 from cert_manager import CertManager
-from handlers import socks, ssl, tls
+from net import socks, ssl, tls
 from safe_socket import SafeSocket
 
 logger = logging.getLogger(__name__)
@@ -14,14 +14,13 @@ CERTS_PATH = "certs"
 ROOT_CERT = "encripton.pem"
 ROOT_KEY = "encripton.key"
 
-BUFSIZE = 2048
-
 class Soxy():
     """ Manage exit status """
     def __init__(self, local_addr: str, local_port):
         self.halt = False
         self.local_addr = local_addr
         self.local_port = local_port
+        self.pipes = []
 
         # Configure root certs
         self.certmanager = CertManager(cert_cache_dir=CERTS_PATH, root_cert=ROOT_CERT, root_key=ROOT_KEY)
@@ -49,24 +48,6 @@ class Soxy():
             self.halt = True
             raise Exception
 
-    def _pipe(self, reader: SafeSocket, writer: SafeSocket):
-        try:
-            while not self.halt:
-                logger.info("Receiving data")
-                data = reader.recv(BUFSIZE)
-                if not data:
-                    logger.info("No more data to receive!")
-                    break
-                logger.info(f"Received {data[0:10]}... ({len(data)} bytes)")
-
-                logger.info("Sending data...")
-                writer.sendall(data)
-        except (OSError, ssl.SSLError):
-            pass
-        finally:
-            reader.close()
-            writer.close()
-
     def handle_conn_socket(self, conn_socket: SafeSocket, client_addr: Tuple[bytes, int]):
         """
         The client connects to the server and sends a header that contains the
@@ -77,22 +58,22 @@ class Soxy():
 
         logger.info("Handling conn socket...")
 
-        socks_client = socks.SocksClient(conn_socket)
-        handshake = socks_client.handshake()
+        client = socks.Client(conn_socket)
+        handshake = client.handshake()
 
         if not handshake:
             return
 
-        dst_addr, dst_port = socks_client.get_request_details()
+        dst_addr, dst_port = client.get_request_details()
 
         if not dst_addr:
             logger.error("Client didn't request a valid dst_addr, aborting...")
-            socks_client.reply_with_invalid_dst_addr()
+            client.reply_with_invalid_dst_addr()
             return
 
         logger.info(f"Client wants to connect to {dst_addr}, {dst_port}")
 
-        socket_dst = socks_client.connect_to_dst(dst_addr, dst_port)
+        socket_dst = client.connect_to_dst(dst_addr, dst_port)
 
         if not socket_dst:
             logger.error(f"I wasn't able to connect to {dst_addr}:{dst_port}, aborting...")
@@ -116,13 +97,8 @@ class Soxy():
             # wrap server socket with default client-side SSL
             socket_dst = ssl.wrap_target(socket_dst, sni)
 
-        t1 = AutoThread(target=self._pipe, args=(conn_socket, socket_dst))
-        t2 = AutoThread(target=self._pipe, args=(socket_dst, conn_socket))
-        t1.join()
-        t2.join()
-
-        conn_socket.close()
-        socket_dst.close()
+        pipe = socks.Pipe(conn_socket, socket_dst)
+        self.pipes.append(pipe)
 
     def wait_for_connection(self) -> Tuple[SafeSocket, Tuple[bytes, int]]:
         logger.info("Waiting for connection...")
@@ -147,9 +123,13 @@ class Soxy():
 
     def stop(self):
         try:
+            try:
+                for pipe in self.pipes:
+                    pipe.halt()
+            except Exception:
+                pass
+
             self.halt = True
             self.main_socket.close()
-        except Exception:
-            pass
         except Exception:
             pass
