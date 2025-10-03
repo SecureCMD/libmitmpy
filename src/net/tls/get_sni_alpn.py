@@ -13,7 +13,6 @@ TLS_1_2 = b'\x03\x03'
 TLS_1_3 = b'\x03\x03' # yeah, this is the same as TLS_1_2 because fuck everything
 TLS_HANDSHAKE_TYPE_CLIENT_HELLO = b'\x01'
 
-
 def get_sni_alpn(sock: SafeSocket) -> Tuple[str, Tuple[str]]:
     """
     Incrementally parse TLS ClientHello to extract SNI and ALPN.
