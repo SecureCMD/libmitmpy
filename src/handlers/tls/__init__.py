@@ -1,4 +1,6 @@
-from .client_hello import client_hello
+from .parse_client_hello import get_sni_alpn
 
-__all__ = ["client_hello"]
+__all__ = [
+  "get_sni_alpn",
+]
 

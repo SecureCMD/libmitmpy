@@ -117,7 +117,7 @@ class CertManager:
             with open(key_path, "wb") as f:
                 f.write(key_pem)
 
-        return cert_path, key_path
+        return cert_path.absolute(), key_path.absolute()
 
     def generate_signed_cert(self, domain) -> Tuple[bytes, bytes]:
         # Load CA key and cert

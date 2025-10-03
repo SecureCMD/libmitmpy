@@ -100,16 +100,13 @@ class Soxy():
 
         # Try to check if this is TLS/SSL
         # Parse the SNI / ALPN here and get the protocol and the hostname...
-        sni, alpn_list = tls.client_hello(conn_socket)
-
+        sni, alpn_list = tls.get_sni_alpn(conn_socket)
         if sni:
             logger.info(sni)
             logger.info(alpn_list)
 
             # domain = dst_addr.decode() if isinstance(dst_addr, bytes) else dst_addr
             # TODO: check if domain matches sni
-
-            # logger.info(f"Intercepting TCP packet for {domain}")
 
             cert_path, key_path = self.certmanager.get_or_generate_cert(sni)
 
@@ -131,7 +128,7 @@ class Soxy():
         logger.info("Waiting for connection...")
         conn_socket, addr = self.main_socket.accept()
         logger.info(f"Got connection from {addr}")
-        return SafeSocket(conn_socket), addr
+        return conn_socket, addr
 
     def run(self):
         while not self.halt:

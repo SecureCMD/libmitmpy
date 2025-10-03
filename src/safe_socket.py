@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import logging
 import socket
 import ssl
+from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +44,9 @@ class SafeSocket:
                 pass
             self._closed = True
 
-    def accept(self, *args, **kwargs):
-        return self._socket.accept(*args, **kwargs)
+    def accept(self, *args, **kwargs) -> Tuple[SafeSocket, Tuple[bytes, int]]:
+        conn_socket, addr = self._socket.accept(*args, **kwargs)
+        return SafeSocket(conn_socket), addr
 
     def sendall(self, *args, **kwargs):
         # TODO: safe sendall?

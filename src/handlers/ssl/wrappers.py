@@ -1,7 +1,9 @@
+import logging
 import ssl
 
 from safe_socket import SafeSocket
 
+logger = logging.getLogger(__name__)
 
 def wrap_local(socket, cert_path=None, key_path=None):
     c_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)

@@ -4,7 +4,7 @@ import socks
 
 host = 'tcpbin.com'
 port = 4243
-pem = "certs/encripton.pem"
+pem = "../certs/encripton.pem"
 # pem = "/Users/alexandernst/.mitmproxy/mitmproxy-ca.pem"
 
 proxy_host = "localhost"
