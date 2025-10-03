@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 
-class Manager:
+class CertManager:
     def __init__(self, cert_cache_dir, root_cert, root_key):
         self.cert_cache_dir = Path(cert_cache_dir)
         self.root_cert = root_cert
