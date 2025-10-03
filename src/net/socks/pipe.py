@@ -1,5 +1,6 @@
 import logging
 import ssl
+import weakref
 
 from autothread import AutoThread
 from safe_socket import SafeSocket
@@ -9,18 +10,26 @@ BUFSIZE = 2048
 logger = logging.getLogger(__name__)
 
 class Pipe:
-    def __init__(self, conn_socket: SafeSocket, socket_dst: SafeSocket):
+    def __init__(self, conn_socket: SafeSocket, socket_dst: SafeSocket, on_pipe_finished: callable):
         self._halt = False
+        self._finalizer = weakref.finalize(self, on_pipe_finished, self)
 
-        t1 = AutoThread(target=self.pipe, args=(conn_socket, socket_dst))
-        t2 = AutoThread(target=self.pipe, args=(socket_dst, conn_socket))
+        self.conn_socket = conn_socket
+        self.socket_dst = socket_dst
+
+    def start(self):
+        t1 = AutoThread(target=self.process, args=(self.conn_socket, self.socket_dst))
+        t2 = AutoThread(target=self.process, args=(self.socket_dst, self.conn_socket))
         t1.join()
         t2.join()
 
-        conn_socket.close()
-        socket_dst.close()
+        self.conn_socket.close()
+        self.socket_dst.close()
 
-    def pipe(self, reader: SafeSocket, writer: SafeSocket):
+    def stop(self):
+        self._halt = True
+
+    def process(self, reader: SafeSocket, writer: SafeSocket):
         try:
             while not self._halt:
                 logger.info("Receiving data")
@@ -38,6 +47,3 @@ class Pipe:
         finally:
             reader.close()
             writer.close()
-
-    def halt(self):
-        self._halt = True

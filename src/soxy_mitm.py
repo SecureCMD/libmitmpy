@@ -97,8 +97,14 @@ class Soxy():
             # wrap server socket with default client-side SSL
             socket_dst = ssl.wrap_target(socket_dst, sni)
 
-        pipe = socks.Pipe(conn_socket, socket_dst)
+        pipe = socks.Pipe(conn_socket, socket_dst, on_pipe_finished=self.on_pipe_finished)
         self.pipes.append(pipe)
+        logger.info(f"Created a pipe for data transmission: {hex(id(pipe))}")
+        pipe.start()
+
+    def on_pipe_finished(self, pipe):
+        logger.info(f"Removing pipe, no more data to transmit: {hex(id(pipe))}")
+        self.pipes.remove(pipe)
 
     def wait_for_connection(self) -> Tuple[SafeSocket, Tuple[bytes, int]]:
         logger.info("Waiting for connection...")
@@ -125,7 +131,7 @@ class Soxy():
         try:
             try:
                 for pipe in self.pipes:
-                    pipe.halt()
+                    pipe.stop()
             except Exception:
                 pass
 
