@@ -83,8 +83,8 @@ class Soxy():
         # Parse the SNI / ALPN here and get the protocol and the hostname...
         sni, alpn_list = tls.get_sni_alpn(conn_socket)
         if sni:
-            logger.info(sni)
-            logger.info(alpn_list)
+            logger.info(f"SNI: {sni}")
+            logger.info(f"ALPN: {repr(alpn_list)}")
 
             # domain = dst_addr.decode() if isinstance(dst_addr, bytes) else dst_addr
             # TODO: check if domain matches sni
