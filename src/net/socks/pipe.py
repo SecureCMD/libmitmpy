@@ -15,11 +15,6 @@ class Pipe:
         self._halt = False
         self._on_finished = on_pipe_finished
 
-        #conn_socket.setblocking(0)
-        #socket_dst.setblocking(0)
-        #conn_socket.settimeout(10)
-        #socket_dst.settimeout(10)
-
         self.conn_socket = conn_socket
         self.socket_dst = socket_dst
 
@@ -72,8 +67,6 @@ class Pipe:
 
                     # drop consumed bytes from buffer
                     del buf[:consumed]
-        #except (TimeoutError, ): # Non-fatal in non-blocking/timeout mode; let loop continue
-        #    pass
         except (OSError, ssl.SSLError):
             logger.error("Something failed, killing MITM pipe...")
             self.stop()
