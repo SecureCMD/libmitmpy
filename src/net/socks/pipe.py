@@ -13,7 +13,12 @@ logger = logging.getLogger(__name__)
 class Pipe:
     def __init__(self, conn_socket: SafeSocket, socket_dst: SafeSocket, on_pipe_finished: callable):
         self._halt = False
-        self._finalizer = weakref.finalize(self, on_pipe_finished, self)
+        self._on_finished = on_pipe_finished
+
+        #conn_socket.setblocking(0)
+        #socket_dst.setblocking(0)
+        #conn_socket.settimeout(10)
+        #socket_dst.settimeout(10)
 
         self.conn_socket = conn_socket
         self.socket_dst = socket_dst
@@ -35,6 +40,8 @@ class Pipe:
         self.conn_socket.close()
         self.socket_dst.close()
 
+        self._on_finished(self)
+
     def stop(self):
         self._halt = True
 
@@ -43,14 +50,15 @@ class Pipe:
 
         try:
             while not self._halt:
-                logger.info("Receiving data")
+                #logger.info("Receiving data")
                 data = reader.recv(BUFSIZE)
                 if not data:
-                    logger.info("No more data to receive!")
+                    #logger.info("No more data to receive!")
+                    self.stop()
                     break
 
                 buf.extend(data)
-                logger.info(f"Received {data[0:10]}... ({len(data)} bytes)")
+                #logger.info(f"Received {data[0:10]}... ({len(data)} bytes)")
 
                 while True:
                     parsed, consumed = self.parser.parse(buf)
@@ -59,13 +67,16 @@ class Pipe:
 
                     transformed = self.transformer.transform(parsed)
 
-                    logger.info("Sending data...")
+                    #logger.info("Sending data...")
                     writer.sendall(transformed)
 
                     # drop consumed bytes from buffer
                     del buf[:consumed]
+        #except (TimeoutError, ): # Non-fatal in non-blocking/timeout mode; let loop continue
+        #    pass
         except (OSError, ssl.SSLError):
-            pass
+            logger.error("Something failed, killing MITM pipe...")
+            self.stop()
         finally:
             reader.close()
             writer.close()

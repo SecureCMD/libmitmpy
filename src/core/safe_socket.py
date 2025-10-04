@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import errno
 import logging
+import select
 import socket
 import ssl
 from typing import Tuple
@@ -48,9 +50,42 @@ class SafeSocket:
         conn_socket, addr = self._socket.accept(*args, **kwargs)
         return SafeSocket(conn_socket), addr
 
-    def sendall(self, *args, **kwargs):
-        # TODO: safe sendall?
-        return self._socket.sendall(*args, *kwargs)
+    def _wait_for(self, for_read=False, for_write=False, timeout=None):
+        r, w = [], []
+        if for_read:
+            r.append(self._socket)
+        if for_write:
+            w.append(self._socket)
+        ready_r, ready_w, _ = select.select(r, w, [], timeout)
+        return bool(ready_r or ready_w)
+
+    def _is_would_block(self, e: BaseException) -> bool:
+        if isinstance(e, BlockingIOError):
+            return True
+        if isinstance(e, OSError):
+            return e.errno in (errno.EWOULDBLOCK, errno.EAGAIN)
+        return False
+
+    def sendall(self, data: bytes, flags: int = 0):
+        view = memoryview(data)
+        total_sent = 0
+        while total_sent < len(view):
+            try:
+                sent = self._socket.send(view[total_sent:], flags)
+                if sent == 0:
+                    raise ConnectionResetError("socket connection broken")
+                total_sent += sent
+            except ssl.SSLWantReadError:
+                self._wait_for(for_read=True)
+                continue
+            except ssl.SSLWantWriteError:
+                self._wait_for(for_write=True)
+                continue
+            except (BlockingIOError, OSError) as e:
+                if self._is_would_block(e):
+                    self._wait_for(for_write=True)
+                    continue
+                raise
 
     def connect(self, *args, **kwargs):
         return self._socket.connect(*args, **kwargs)
@@ -73,67 +108,62 @@ class SafeSocket:
     def setblocking(self, *args, **kwargs):
         return self._socket.setblocking(*args, **kwargs)
 
-    def recv(self, *args, **kwargs):
-        return self._socket.recv(*args, **kwargs)
+    def recv(self, bufsize: int, flags: int = 0) -> bytes:
+        while True:
+            try:
+                return self._socket.recv(bufsize, flags)
+            except ssl.SSLWantReadError:
+                self._wait_for(for_read=True)
+                continue
+            except ssl.SSLWantWriteError:
+                self._wait_for(for_write=True)
+                continue
+            except (BlockingIOError, OSError) as e:
+                if self._is_would_block(e):
+                    self._wait_for(for_read=True)
+                    continue
+                raise
 
     def recvall(self, n: int) -> bytes:
-        """
-        Read exactly n bytes from the underlying socket.
-        Returns the bytes read; if EOF is reached before `n` bytes, returns fewer bytes.
-        Raises socket.timeout / OSError as propagated by the underlying socket.
-        Handles SSLWantRead/Write by retrying.
-        """
         buf = bytearray()
         while len(buf) < n:
             try:
                 chunk = self._socket.recv(n - len(buf))
-            except Exception as exc:
-                logger.exception()
-                # handle non-blocking SSL intermediate exceptions by retrying
-                try:
-                    want_read = isinstance(exc, ssl.SSLWantReadError)
-                    want_write = isinstance(exc, ssl.SSLWantWriteError)
-                except Exception:
-                    want_read = want_write = False
-
-                if want_read or want_write:
+                if not chunk:
+                    break
+                buf.extend(chunk)
+            except ssl.SSLWantReadError:
+                self._wait_for(for_read=True)
+                continue
+            except ssl.SSLWantWriteError:
+                self._wait_for(for_write=True)
+                continue
+            except (BlockingIOError, OSError) as e:
+                if self._is_would_block(e):
+                    self._wait_for(for_read=True)
                     continue
-                # re-raise socket.timeout and other OSErrors
                 raise
-            if not chunk:
-                # EOF
-                break
-            buf.extend(chunk)
         return bytes(buf)
 
     def peekall(self, n: int) -> bytes:
-        """
-        Peek exactly n bytes from the underlying socket.
-        Returns the bytes read; if EOF is reached before `n` bytes, returns fewer bytes.
-        Raises socket.timeout / OSError as propagated by the underlying socket.
-        Handles SSLWantRead/Write by retrying.
-        """
         buf = bytearray()
         while len(buf) < n:
             try:
                 chunk = self._socket.recv(n - len(buf), socket.MSG_PEEK)
-            except Exception as exc:
-                logger.exception()
-                # handle non-blocking SSL intermediate exceptions by retrying
-                try:
-                    want_read = isinstance(exc, ssl.SSLWantReadError)
-                    want_write = isinstance(exc, ssl.SSLWantWriteError)
-                except Exception:
-                    want_read = want_write = False
-
-                if want_read or want_write:
+                if not chunk:
+                    break
+                buf.extend(chunk)
+            except ssl.SSLWantReadError:
+                self._wait_for(for_read=True)
+                continue
+            except ssl.SSLWantWriteError:
+                self._wait_for(for_write=True)
+                continue
+            except (BlockingIOError, OSError) as e:
+                if self._is_would_block(e):
+                    self._wait_for(for_read=True)
                     continue
-                # re-raise socket.timeout and other OSErrors
                 raise
-            if not chunk:
-                # EOF
-                break
-            buf.extend(chunk)
         return bytes(buf)
 
     # proxy to the real socket for everything else

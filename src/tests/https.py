@@ -1,7 +1,7 @@
 import requests
 
 resp = requests.get(
-    "https://geoapi.es",
+    "https://google.com/",
     proxies=dict(
         http="socks5h://localhost:9090",
         https="socks5h://localhost:9090",

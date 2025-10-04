@@ -33,6 +33,7 @@ class Soxy():
         try:
             logger.info(f'Bind {self.local_port}')
             self.main_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.main_socket.settimeout(None)
             self.main_socket.bind((self.local_addr, self.local_port))
         except socket.error as err:
             logger.error("Bind failed", err)
@@ -54,13 +55,11 @@ class Soxy():
         must either reject the connection or reply with the selected verion and
         auth method.
         """
-
-        logger.info("Handling conn socket...")
-
         client = socks.Client(conn_socket)
         handshake = client.handshake()
 
         if not handshake:
+            logger.error("I wasn't able to handshake with the client...")
             return
 
         dst_addr, dst_port = client.get_request_details()
@@ -88,6 +87,7 @@ class Soxy():
             # domain = dst_addr.decode() if isinstance(dst_addr, bytes) else dst_addr
             # TODO: check if domain matches sni
 
+            logger.info(f"Generating spoofed cert for {sni}")
             cert_path, key_path = self.certmanager.get_or_generate_cert(sni)
 
             # wrap client socket with fake cert
@@ -98,12 +98,13 @@ class Soxy():
 
         pipe = socks.Pipe(conn_socket, socket_dst, on_pipe_finished=self.on_pipe_finished)
         self.pipes.append(pipe)
-        logger.info(f"Created a pipe for data transmission: {hex(id(pipe))}")
+        logger.info(f"Created a MITM pipe for data transmission: {hex(id(pipe))}")
         pipe.start()
 
     def on_pipe_finished(self, pipe):
-        logger.info(f"Removing pipe, no more data to transmit: {hex(id(pipe))}")
-        self.pipes.remove(pipe)
+        logger.info(f"Killing MITM pipe, no more data to transmit: {hex(id(pipe))}")
+        if pipe in self.pipes:
+            self.pipes.remove(pipe)
 
     def wait_for_connection(self) -> Tuple[SafeSocket, Tuple[bytes, int]]:
         logger.info("Waiting for connection...")
