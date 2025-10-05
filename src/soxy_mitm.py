@@ -111,7 +111,7 @@ class Soxy():
         logger.info(f"Got connection from {addr}")
         return conn_socket, addr
 
-    def run(self):
+    def start(self):
         while not self.halt:
             try:
                 conn_socket, client_addr = self.wait_for_connection()

@@ -21,4 +21,4 @@ signal(SIGINT, exit_handler)
 signal(SIGTERM, exit_handler)
 
 soxy = Soxy(local_addr=LOCAL_ADDR, local_port=LOCAL_PORT)
-soxy.run()
+soxy.start()
