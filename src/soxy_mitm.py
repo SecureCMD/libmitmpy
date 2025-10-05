@@ -33,7 +33,6 @@ class Soxy():
         try:
             logger.info(f'Bind {self.local_port}')
             self.main_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.main_socket.settimeout(None)
             self.main_socket.bind((self.local_addr, self.local_port))
         except socket.error as err:
             logger.error("Bind failed", err)
@@ -98,11 +97,11 @@ class Soxy():
 
         pipe = socks.Pipe(conn_socket, socket_dst, on_pipe_finished=self.on_pipe_finished)
         self.pipes.append(pipe)
-        logger.info(f"Created a MITM pipe for data transmission: {hex(id(pipe))}")
+        logger.info(f"Created a MITM pipe: {hex(id(pipe))}")
         pipe.start()
 
     def on_pipe_finished(self, pipe):
-        logger.info(f"Killing MITM pipe, no more data to transmit: {hex(id(pipe))}")
+        logger.info(f"Removing MITM pipe: {hex(id(pipe))}")
         if pipe in self.pipes:
             self.pipes.remove(pipe)
 
@@ -125,7 +124,7 @@ class Soxy():
                 self.stop()
                 sys.exit(0)
 
-            AutoThread(target=self.handle_conn_socket, args=[conn_socket, client_addr])
+            AutoThread(target=self.handle_conn_socket, args=[conn_socket, client_addr], tname="<->")
 
     def stop(self):
         try:

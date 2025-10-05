@@ -7,8 +7,6 @@ from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
-TIMEOUT_SOCKET = 5
-
 class SafeSocket:
     def __init__(self, socket: socket.socket | ssl.SSLSocket):
         self._socket = socket
@@ -20,7 +18,8 @@ class SafeSocket:
         try:
             _socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             _socket = SafeSocket(_socket)
-            _socket.settimeout(TIMEOUT_SOCKET)
+            _socket.setblocking(1)
+            _socket.settimeout(None)
             _socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         except socket.error:
             logger.exception("Failed to create socket")
