@@ -5,17 +5,16 @@ from typing import Tuple
 
 from core import SafeSocket
 
-# --- Version of the protocol ---
-VER = b'\x05' # PROTOCOL VERSION
-# --- Method constants ---
-M_NOAUTH = b'\x00' # NO AUTHENTICATION REQUIRED
-M_AUTH = b'\x02' # USER / PASSWORD AUTHENTICATION
-M_NOTAVAILABLE = b'\xff' # NO ACCEPTABLE METHODS
-# --- Command constants ---
-CMD_CONNECT = b'\x01' # CONNECT
-# --- Address type constants ---
+VER = b'\x05' # Protocol version
+
+M_NOAUTH = b'\x00' # No authentication required
+M_AUTH = b'\x02' # User / password authentication
+M_NOTAVAILABLE = b'\xff' # No acceptable methods
+
+CMD_CONNECT = b'\x01' # Connect
+
 ATYP_IPV4 = b'\x01' # IPv4 address
-ATYP_DOMAINNAME = b'\x03' # DOMAINNAME
+ATYP_DOMAINNAME = b'\x03' # Domain name
 ATYP_IPV6 = b'\x04' # IPv6 address
 
 logger = logging.getLogger(__name__)
