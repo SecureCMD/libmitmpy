@@ -5,7 +5,7 @@ from signal import SIGINT, SIGTERM, signal
 from soxy_mitm import Soxy
 
 logging.basicConfig(
-    format='[%(asctime)s][%(threadName)s %(thread)d] %(levelname)s:%(filename)s:%(funcName)s:%(lineno)d %(message)s',
+    format='[%(asctime)s][%(threadName)s %(thread)#x] %(levelname)s:%(filename)s:%(funcName)s:%(lineno)d %(message)s',
     level=logging.INFO,
     datefmt="%H:%M:%S.%f"
 )
