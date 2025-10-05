@@ -44,8 +44,8 @@ class Client:
                     self.socket.sendall(VER + M_NOTAVAILABLE)
                     self.socket.close()
                     return False
-        except Exception as ex:
-            logger.error("Something unexpected happened, handle it", ex)
+        except Exception:
+            logger.exception("Something unexpected happened")
             self.socket.close()
             return False
 
@@ -55,8 +55,8 @@ class Client:
         # +-----+--------+
         try:
             self.socket.sendall(VER + M_NOAUTH)
-        except Exception as ex:
-            logger.error("Something unexpected happened, handle it", ex)
+        except Exception:
+            logger.exception("Something unexpected happened")
             self.socket.close()
             return False
 

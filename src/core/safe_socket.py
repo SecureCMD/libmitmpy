@@ -54,7 +54,7 @@ class SafeSocket:
             while total < len(view):
                 sent = self._socket.send(view[total:], flags)
                 if sent == 0:
-                    raise ConnectionResetError("socket connection broken")
+                    raise ConnectionResetError(f"Sent less bytes than expected ({total}/{len(data)}).")
                 total += sent
         else:
             self._socket.sendall(data)
@@ -71,14 +71,8 @@ class SafeSocket:
     def bind(self, *args, **kwargs):
         return self._socket.bind(*args, **kwargs)
 
-    def settimeout(self, *args, **kwargs):
-        return self._socket.settimeout(*args, **kwargs)
-
     def getsockname(self, *args, **kwargs):
         return self._socket.getsockname(*args, **kwargs)
-
-    def setblocking(self, *args, **kwargs):
-        return self._socket.setblocking(*args, **kwargs)
 
     def recv(self, bufsize: int, flags: int = 0) -> bytes:
         return self._socket.recv(bufsize, flags)
@@ -88,7 +82,7 @@ class SafeSocket:
         while len(buf) < n:
             chunk = self._socket.recv(n - len(buf))
             if not chunk:
-                break
+                raise ConnectionResetError(f"Received less bytes than expected ({len(buf)}/{n}).")
             buf.extend(chunk)
         return bytes(buf)
 
@@ -99,10 +93,8 @@ class SafeSocket:
         while len(buf) < n:
             chunk = self._socket.recv(n - len(buf), socket.MSG_PEEK)
             if not chunk:
-                break
+                raise ConnectionResetError(f"Received less bytes than expected ({len(buf)}/{n}).")
             buf.extend(chunk)
-            if len(chunk) == 0:
-                break
         return bytes(buf)
 
     # proxy to the real socket for everything else
