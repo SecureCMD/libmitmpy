@@ -16,7 +16,7 @@ ROOT_KEY = "encripton.key"
 class Soxy():
     """ Manage exit status """
     def __init__(self, local_addr: str, local_port):
-        self.halt = False
+        self._halt = False
         self.local_addr = local_addr
         self.local_port = local_port
         self.pipes = []
@@ -44,7 +44,7 @@ class Soxy():
         except socket.error as err:
             logger.error("Listen failed", err)
             self.main_socket.close()
-            self.halt = True
+            self._halt = True
             raise Exception
 
     def handle_conn_socket(self, conn_socket: SafeSocket, client_addr: Tuple[bytes, int]):
@@ -112,29 +112,21 @@ class Soxy():
         return conn_socket, addr
 
     def start(self):
-        while not self.halt:
+        while not self._halt:
             try:
                 conn_socket, client_addr = self.wait_for_connection()
-            except socket.timeout:
-                continue
             except socket.error:
                 self.stop()
                 continue
-            except TypeError:
-                self.stop()
-                sys.exit(0)
 
             AutoThread(target=self.handle_conn_socket, args=[conn_socket, client_addr], tname="<->")
 
     def stop(self):
         try:
-            try:
-                for pipe in self.pipes:
-                    pipe.stop()
-            except Exception:
-                pass
+            for pipe in self.pipes:
+                pipe.stop()
 
-            self.halt = True
+            self._halt = True
             self.main_socket.close()
         except Exception:
             pass
