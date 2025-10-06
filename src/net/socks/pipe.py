@@ -11,36 +11,36 @@ BUFSIZE = 2048
 logger = logging.getLogger(__name__)
 
 class Pipe:
-    def __init__(self, conn_socket: SafeSocket, socket_dst: SafeSocket, on_pipe_finished: callable):
+    def __init__(self, client_socket: SafeSocket, target_socket: SafeSocket, on_pipe_finished: callable):
         self._halt = False
         self._on_finished = on_pipe_finished
 
-        self.conn_socket = conn_socket
-        self.socket_dst = socket_dst
+        self.client_socket = client_socket
+        self.target_socket = target_socket
 
         self.buffers = {
-            (self.conn_socket, self.socket_dst): bytearray(),
-            (self.socket_dst, self.conn_socket): bytearray(),
+            (self.client_socket, self.target_socket): bytearray(),
+            (self.target_socket, self.client_socket): bytearray(),
         }
 
         self.parser = HTTPParser()
         self.transformer = HTTPTransformer()
 
     def start(self):
-        t1 = AutoThread(target=self.send, args=(self.conn_socket, self.socket_dst), tname="->")
-        t2 = AutoThread(target=self.receive, args=(self.socket_dst, self.conn_socket), tname="<-")
+        t1 = AutoThread(target=self.send, args=(self.client_socket, self.target_socket), tname="->")
+        t2 = AutoThread(target=self.receive, args=(self.target_socket, self.client_socket), tname="<-")
         t1.join()
         t2.join()
 
-        self.conn_socket.close()
-        self.socket_dst.close()
+        self.client_socket.close()
+        self.target_socket.close()
 
         self._on_finished(self)
 
     def stop(self):
         self._halt = True
-        self.conn_socket.shutdown(socket.SHUT_RDWR)
-        self.socket_dst.shutdown(socket.SHUT_RDWR)
+        self.client_socket.shutdown(socket.SHUT_RDWR)
+        self.target_socket.shutdown(socket.SHUT_RDWR)
 
     def send(self, reader: SafeSocket, writer: SafeSocket):
         buf = self.buffers[(reader, writer)]

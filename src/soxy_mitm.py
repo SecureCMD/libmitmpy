@@ -47,14 +47,14 @@ class Soxy():
             self._halt = True
             raise Exception
 
-    def handle_conn_socket(self, conn_socket: SafeSocket, client_addr: Tuple[bytes, int]):
+    def handle_client(self, client_socket: SafeSocket):
         """
         The client connects to the server and sends a header that contains the
         protocol version and the auth methods that it supports. Then the server
         must either reject the connection or reply with the selected verion and
         auth method.
         """
-        client = socks.Client(conn_socket)
+        client = socks.Client(client_socket)
         handshake = client.handshake()
 
         if not handshake:
@@ -70,15 +70,15 @@ class Soxy():
 
         logger.info(f"Client wants to connect to {dst_addr}, {dst_port}")
 
-        socket_dst = client.connect_to_dst(dst_addr, dst_port)
+        target_socket = client.connect_to_dst(dst_addr, dst_port)
 
-        if not socket_dst:
+        if not target_socket:
             logger.error(f"I wasn't able to connect to {dst_addr}:{dst_port}, aborting...")
             return
 
         # Try to check if this is TLS/SSL
         # Parse the SNI / ALPN here and get the protocol and the hostname...
-        sni, alpn_list = tls.get_sni_alpn(conn_socket)
+        sni, alpn_list = tls.get_sni_alpn(client_socket)
         if sni:
             logger.info(f"SNI: {sni}")
             logger.info(f"ALPN: {repr(alpn_list)}")
@@ -90,12 +90,12 @@ class Soxy():
             cert_path, key_path = self.certmanager.get_or_generate_cert(sni)
 
             # wrap client socket with fake cert
-            conn_socket = ssl.wrap_local(conn_socket, cert_path=cert_path, key_path=key_path)
+            client_socket = ssl.wrap_local(client_socket, cert_path=cert_path, key_path=key_path)
 
             # wrap server socket with default client-side SSL
-            socket_dst = ssl.wrap_target(socket_dst, sni)
+            target_socket = ssl.wrap_target(target_socket, sni)
 
-        pipe = socks.Pipe(conn_socket, socket_dst, on_pipe_finished=self.on_pipe_finished)
+        pipe = socks.Pipe(client_socket, target_socket, on_pipe_finished=self.on_pipe_finished)
         self.pipes.append(pipe)
         logger.info(f"Created a MITM pipe: {hex(id(pipe))}")
         pipe.start()
@@ -114,12 +114,12 @@ class Soxy():
     def start(self):
         while not self._halt:
             try:
-                conn_socket, client_addr = self.wait_for_connection()
+                client_socket, _ = self.wait_for_connection()
             except socket.error:
                 self.stop()
                 continue
 
-            AutoThread(target=self.handle_conn_socket, args=[conn_socket, client_addr], tname="<->")
+            AutoThread(target=self.handle_client, args=[client_socket], tname="<->")
 
     def stop(self):
         try:
