@@ -3,6 +3,7 @@ import socket
 import ssl
 
 from core import AutoThread, SafeSocket
+from mixins import EventMixin
 from parsers.http import HTTPParser
 from transformers.http import HTTPTransformer
 
@@ -10,10 +11,11 @@ BUFSIZE = 2048
 
 logger = logging.getLogger(__name__)
 
-class Pipe:
-    def __init__(self, client_socket: SafeSocket, target_socket: SafeSocket, on_pipe_finished: callable):
+class Pipe(EventMixin):
+    def __init__(self, client_socket: SafeSocket, target_socket: SafeSocket):
+        super().__init__()
+
         self._halt = False
-        self._on_finished = on_pipe_finished
 
         self.client_socket = client_socket
         self.target_socket = target_socket
@@ -26,23 +28,26 @@ class Pipe:
         self.parser = HTTPParser()
         self.transformer = HTTPTransformer()
 
+        logger.info(f"Created a MITM pipe: {hex(id(self))}")
+
     def start(self):
-        t1 = AutoThread(target=self.send, args=(self.client_socket, self.target_socket), tname="->")
-        t2 = AutoThread(target=self.receive, args=(self.target_socket, self.client_socket), tname="<-")
+        t1 = AutoThread(target=self._read_from_downstream, args=(self.client_socket, self.target_socket), tname="->")
+        t2 = AutoThread(target=self._read_from_upstream, args=(self.target_socket, self.client_socket), tname="<-")
         t1.join()
         t2.join()
 
         self.client_socket.close()
         self.target_socket.close()
 
-        self._on_finished(self)
+        self.emit("pipe_closed", self)
+        logger.info(f"Removing MITM pipe: {hex(id(self))}")
 
     def stop(self):
         self._halt = True
         self.client_socket.shutdown(socket.SHUT_RDWR)
         self.target_socket.shutdown(socket.SHUT_RDWR)
 
-    def send(self, reader: SafeSocket, writer: SafeSocket):
+    def _read_from_downstream(self, reader: SafeSocket, writer: SafeSocket):
         buf = self.buffers[(reader, writer)]
 
         try:
@@ -72,7 +77,7 @@ class Pipe:
             self.stop()
 
 
-    def receive(self, reader: SafeSocket, writer: SafeSocket):
+    def _read_from_upstream(self, reader: SafeSocket, writer: SafeSocket):
         buf = self.buffers[(reader, writer)]
 
         def drain_parsed(eof=False):

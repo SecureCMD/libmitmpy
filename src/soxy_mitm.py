@@ -6,6 +6,7 @@ from typing import Tuple
 from cert_manager import CertManager
 from core import AutoThread, SafeSocket
 from net import socks, ssl, tls
+from pipe_manager import PipeManager
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,9 @@ class Soxy():
         self._halt = False
         self.local_addr = local_addr
         self.local_port = local_port
-        self.pipes = []
+
+        # Configure MITM pipes manager
+        self.pipemanager = PipeManager()
 
         # Configure root certs
         self.certmanager = CertManager(cert_cache_dir=CERTS_PATH, root_cert=ROOT_CERT, root_key=ROOT_KEY)
@@ -95,26 +98,16 @@ class Soxy():
             # wrap server socket with default client-side SSL
             target_socket = ssl.wrap_target(target_socket, sni)
 
-        pipe = socks.Pipe(client_socket, target_socket, on_pipe_finished=self.on_pipe_finished)
-        self.pipes.append(pipe)
-        logger.info(f"Created a MITM pipe: {hex(id(pipe))}")
+        pipe = socks.Pipe(client_socket, target_socket)
+        self.pipemanager.add(pipe)
         pipe.start()
-
-    def on_pipe_finished(self, pipe):
-        logger.info(f"Removing MITM pipe: {hex(id(pipe))}")
-        if pipe in self.pipes:
-            self.pipes.remove(pipe)
-
-    def wait_for_connection(self) -> Tuple[SafeSocket, Tuple[bytes, int]]:
-        logger.info("Waiting for connection...")
-        conn_socket, addr = self.main_socket.accept()
-        logger.info(f"Got connection from {addr}")
-        return conn_socket, addr
 
     def start(self):
         while not self._halt:
             try:
-                client_socket, _ = self.wait_for_connection()
+                logger.info("Waiting for connection...")
+                client_socket, addr = self.main_socket.accept()
+                logger.info(f"Got connection from {addr}")
             except socket.error:
                 self.stop()
                 continue
@@ -123,7 +116,7 @@ class Soxy():
 
     def stop(self):
         try:
-            for pipe in self.pipes:
+            for pipe in self.pipemanager.pipes:
                 pipe.stop()
 
             self._halt = True
