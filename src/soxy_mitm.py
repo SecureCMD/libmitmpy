@@ -1,7 +1,5 @@
 import logging
 import socket
-import sys
-from typing import Tuple
 
 from cert_manager import CertManager
 from core import AutoThread, SafeSocket
@@ -9,10 +7,6 @@ from net import socks, ssl, tls
 from pipe_manager import PipeManager
 
 logger = logging.getLogger(__name__)
-
-CERTS_PATH = "certs"
-ROOT_CERT = "encripton.pem"
-ROOT_KEY = "encripton.key"
 
 class Soxy():
     """ Manage exit status """
@@ -25,8 +19,8 @@ class Soxy():
         self.pipemanager = PipeManager()
 
         # Configure root certs
-        self.certmanager = CertManager(cert_cache_dir=CERTS_PATH, root_cert=ROOT_CERT, root_key=ROOT_KEY)
-        if not self.certmanager.is_cert_valid(ROOT_CERT):
+        self.certmanager = CertManager()
+        if not self.certmanager.is_root_cert_valid():
             self.certmanager.create_root_cert()
 
         # Creat the main socket
@@ -89,8 +83,8 @@ class Soxy():
             # domain = dst_addr.decode() if isinstance(dst_addr, bytes) else dst_addr
             # TODO: check if domain matches sni
 
-            logger.info(f"Generating spoofed cert for {sni}")
             cert_path, key_path = self.certmanager.get_or_generate_cert(sni)
+            logger.info(f"Wrapping socket with certs {cert_path}, {key_path}")
 
             # wrap client socket with fake cert
             client_socket = ssl.wrap_local(client_socket, cert_path=cert_path, key_path=key_path)

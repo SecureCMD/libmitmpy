@@ -1,3 +1,4 @@
+import logging
 import os
 import subprocess
 from datetime import datetime, timedelta, timezone
@@ -9,16 +10,31 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
+logger = logging.getLogger(__name__)
+
+CERTS_PATH = "certs"
+ROOT_CERT = "encripton.pem"
+ROOT_KEY = "encripton.key"
+
+CERT = "{domain}.crt.pem"
+KEY = "{domain}.key.pem"
 
 class CertManager:
-    def __init__(self, cert_cache_dir, root_cert, root_key):
-        self.cert_cache_dir = Path(cert_cache_dir)
-        self.root_cert = root_cert
-        self.root_key = root_key
+    def __init__(self):
+        self.cert_cache_dir = Path(CERTS_PATH)
+        self.root_cert = ROOT_CERT
+        self.root_key = ROOT_KEY
 
         os.makedirs(self.cert_cache_dir, exist_ok=True)
 
-    def is_cert_valid(self, cert_name: str) -> bool:
+    def is_root_cert_valid(self) -> bool:
+        return self._is_cert_valid(cert_name=ROOT_CERT)
+
+    def is_cert_valid(self, domain: str) -> bool:
+        cert_name = CERT.format(domain=domain)
+        return self._is_cert_valid(cert_name=cert_name)
+
+    def _is_cert_valid(self, cert_name) -> bool:
         try:
             with open(self.cert_cache_dir / cert_name, "rb") as f:
                 cert = x509.load_pem_x509_certificate(f.read())
@@ -102,13 +118,15 @@ class CertManager:
         return cert_pem, key_pem
 
     def get_or_generate_cert(self, domain) -> Tuple[str, str]:
-        cert_path = self.cert_cache_dir / f"{domain}.crt.pem"
-        key_path = self.cert_cache_dir / f"{domain}.key.pem"
+        cert_path = self.cert_cache_dir / CERT.format(domain=domain)
+        key_path = self.cert_cache_dir / KEY.format(domain=domain)
+
         if (
             not os.path.exists(cert_path)
             or not os.path.exists(key_path)
-            or not self.is_cert_valid(cert_path)
+            or not self.is_cert_valid(domain)
         ):
+            logger.info(f"Generating spoofed cert for {domain}")
             cert_pem, key_pem = self.generate_signed_cert(domain)
 
             with open(cert_path, "wb") as f:
