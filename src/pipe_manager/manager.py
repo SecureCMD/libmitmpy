@@ -13,8 +13,11 @@ class PipeManager:
     def __init__(self):
         self.pipes: List[Pipe] = []
 
-        self.parser = DummyParser() # HTTPParser()
-        self.transformer = DummyTransformer() # HTTPTransformer()
+        self.parser = HTTPParser()
+        self.transformer = HTTPTransformer()
+
+        self.parser = DummyParser()
+        self.transformer = DummyTransformer()
 
     def add(self, pipe):
         self.pipes.append(pipe)
