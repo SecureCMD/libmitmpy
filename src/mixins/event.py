@@ -15,3 +15,5 @@ class EventMixin:
     def emit(self, event, *args, **kwargs):
         for cb in self._events.get(event, []):
             cb(*args, **kwargs)
+
+# TODO: Not thread safe

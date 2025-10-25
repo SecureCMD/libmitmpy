@@ -12,6 +12,9 @@ class SafeSocket:
         self._socket = socket
         self._closed = False
 
+    def __str__(self):
+        return f"{hex(id(self))}"
+
     @staticmethod
     def create():
         """ Create an INET, STREAMing socket """

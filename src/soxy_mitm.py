@@ -2,8 +2,8 @@ import logging
 import socket
 
 from cert_manager import CertManager
-from core import AutoThread, SafeSocket
-from net import socks, ssl, tls
+from core import AutoThread, SafeConnection, SafeSocket
+from net import socks, tls
 from pipe_manager import PipeManager
 
 logger = logging.getLogger(__name__)
@@ -76,25 +76,30 @@ class Soxy():
         # Try to check if this is TLS/SSL
         # Parse the SNI / ALPN here and get the protocol and the hostname...
         sni, alpn_list = tls.get_sni_alpn(client_socket)
-        if sni:
+        if not sni:
+            logger.info(f"Creating plain text pipe for sockets [{client_socket}, {target_socket}]")
+            pipe = socks.Pipe(client_socket, target_socket)
+        else:
             logger.info(f"SNI: {sni}")
             logger.info(f"ALPN: {repr(alpn_list)}")
 
             # domain = dst_addr.decode() if isinstance(dst_addr, bytes) else dst_addr
             # TODO: check if domain matches sni
 
-            cert_path, key_path = self.certmanager.get_or_generate_cert(sni)
-            logger.info(f"Wrapping socket with certs {cert_path}, {key_path}")
+            cert_pem, key_pem = self.certmanager.get_or_generate_cert(sni)
 
             # wrap client socket with fake cert
-            client_socket = ssl.wrap_local(client_socket, cert_path=cert_path, key_path=key_path)
+            client_conn = SafeConnection(client_socket)
+            client_conn.wrap_local(cert_pem=cert_pem, key_pem=key_pem)
 
             # wrap server socket with default client-side SSL
-            target_socket = ssl.wrap_target(target_socket, sni)
+            target_conn = SafeConnection(target_socket)
+            target_conn.wrap_target(sni)
 
-        pipe = socks.Pipe(client_socket, target_socket)
+            logger.info(f"Creating secure pipe for sockets [{client_conn}, {target_conn}]")
+            pipe = socks.Pipe(client_conn, target_conn)
+
         self.pipemanager.add(pipe)
-        pipe.start()
 
     def start(self):
         while not self._halt:
@@ -106,12 +111,11 @@ class Soxy():
                 self.stop()
                 continue
 
-            AutoThread(target=self.handle_client, args=[client_socket], tname="<->")
+            AutoThread(target=self.handle_client, args=[client_socket], name="<->")
 
     def stop(self):
         try:
-            for pipe in self.pipemanager.pipes:
-                pipe.stop()
+            self.pipemanager.stop_all()
 
             self._halt = True
             self.main_socket.close()

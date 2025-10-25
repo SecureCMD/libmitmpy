@@ -1,3 +1,4 @@
-cryptography
+cryptography==45.0.7
 requests[socks]
 pysocks
+pyopenssl==25.3.0

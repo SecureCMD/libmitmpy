@@ -2,7 +2,9 @@ import logging
 from typing import List
 
 from net.socks import Pipe
+from parsers.dummy import DummyParser
 from parsers.http import HTTPParser
+from transformers.dummy import DummyTransformer
 from transformers.http import HTTPTransformer
 
 logger = logging.getLogger(__name__)
@@ -11,18 +13,30 @@ class PipeManager:
     def __init__(self):
         self.pipes: List[Pipe] = []
 
-        self.parser = HTTPParser()
-        self.transformer = HTTPTransformer()
+        self.parser = DummyParser() # HTTPParser()
+        self.transformer = DummyTransformer() # HTTPTransformer()
 
     def add(self, pipe):
         self.pipes.append(pipe)
-        pipe.on("pipe_closed", self.remove)
+        pipe.on("pipe_finished", self.remove)
         pipe.on("outgoing_data_available", self.flush_outgoing_data)
         pipe.on("incoming_data_available", self.flush_incoming_data)
 
+        logger.info(f"Starting pipe {pipe}")
+        pipe.start()
+
+    def stop_all(self):
+        for pipe in self.pipes:
+            logger.info(f"Stopping pipe {pipe}")
+            pipe.stop()
+
     def remove(self, pipe):
-        pipe.off("pipe_closed", self.remove)
+        pipe.off("pipe_finished", self.remove)
         if pipe in self.pipes:
+            logger.info(f"Stopping pipe {pipe}")
+            pipe.stop()
+
+            logger.info(f"Removing pipe {pipe}")
             self.pipes.remove(pipe)
 
     def flush_outgoing_data(self, pipe, eof=False):
@@ -37,7 +51,6 @@ class PipeManager:
 
             transformed = self.transformer.transform(parsed)
 
-            logger.debug(f"Sending {len(transformed)} to remote socket...")
             pipe.write_to_upstream(transformed)
             del buf[:consumed]
 
@@ -59,7 +72,6 @@ class PipeManager:
 
             transformed = self.transformer.transform(parsed)
 
-            logger.debug(f"Sending {len(transformed)} to local socket...")
             pipe.write_to_downstream(transformed)
             del buf[:consumed]
 

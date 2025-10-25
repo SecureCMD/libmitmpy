@@ -135,15 +135,29 @@ class CertManager:
             with open(key_path, "wb") as f:
                 f.write(key_pem)
 
-        return cert_path.absolute(), key_path.absolute()
+            return cert_pem, key_pem
+
+        with open(cert_path, "rb") as f:
+            cert = x509.load_pem_x509_certificate(f.read())
+            cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+
+        with open(key_path, "rb") as f:
+            key = serialization.load_pem_private_key(f.read(), password=None)
+            key_pem = key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+
+        return cert_pem, key_pem
 
     def generate_signed_cert(self, domain) -> Tuple[bytes, bytes]:
-        # Load CA key and cert
-        with open(self.cert_cache_dir / self.root_key, "rb") as f:
-            ca_key = serialization.load_pem_private_key(f.read(), password=None)
-
+        # Load cert and CA key
         with open(self.cert_cache_dir / self.root_cert, "rb") as f:
             ca_cert = x509.load_pem_x509_certificate(f.read())
+
+        with open(self.cert_cache_dir / self.root_key, "rb") as f:
+            ca_key = serialization.load_pem_private_key(f.read(), password=None)
 
         # Generate new key for the fake cert
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)

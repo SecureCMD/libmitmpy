@@ -2,7 +2,7 @@ import logging
 import socket
 import ssl
 
-from core import AutoThread, SafeSocket
+from core import SafeConnection, SafeSocket, Thread
 from mixins import EventMixin
 
 BUFSIZE = 2048
@@ -10,75 +10,83 @@ BUFSIZE = 2048
 logger = logging.getLogger(__name__)
 
 class Pipe(EventMixin):
-    def __init__(self, client_socket: SafeSocket, target_socket: SafeSocket):
+    def __init__(self, downstream: SafeSocket | SafeConnection, upstream: SafeSocket | SafeConnection):
         super().__init__()
 
         self._halt = False
 
-        self._downstream_socket = client_socket
-        self._upstream_socket = target_socket
+        self._downstream = downstream
+        self._upstream = upstream
 
         self._outgoing_buffer = bytearray()
         self._incoming_buffer = bytearray()
 
+        logger.info(f"Created pipe {self} for sockets [{downstream}, {upstream}]")
+
+    def __str__(self):
+        return f"{hex(id(self))}"
+
     def start(self):
-        logger.info(f"Creating MITM pipe: {hex(id(self))}")
+        self.t1 = Thread(target=self._read_from_downstream, args=(), name="->")
+        self.t2 = Thread(target=self._read_from_upstream, args=(), name="<-")
 
-        t1 = AutoThread(target=self._read_from_downstream, args=(), tname="->")
-        t2 = AutoThread(target=self._read_from_upstream, args=(), tname="<-")
-        t1.join()
-        t2.join()
+        logger.info(f"Created stream threads [{self.t1}, {self.t2}] for pipe {self}")
 
-        self._downstream_socket.close()
-        self._upstream_socket.close()
+        self.t1.start()
+        self.t2.start()
 
-        self.emit("pipe_closed", self)
-        logger.info(f"Removing MITM pipe: {hex(id(self))}")
+        self.t1.join()
+        self.t2.join()
+
+        self.emit("pipe_finished", self)
 
     def stop(self):
         self._halt = True
 
-        self._downstream_socket.shutdown(socket.SHUT_RDWR)
-        self._upstream_socket.shutdown(socket.SHUT_RDWR)
+        self._downstream.shutdown(socket.SHUT_RDWR)
+        self._upstream.shutdown(socket.SHUT_RDWR)
+
+        self._downstream.close()
+        self._upstream.close()
 
     def _read_from_downstream(self):
         try:
             while not self._halt:
                 logger.debug("Receiving data from local socket...")
-                data = self._downstream_socket.recv(BUFSIZE)
+                data = self._downstream.recv(BUFSIZE)
                 logger.debug(f"Received {len(data)} bytes.")
 
                 if not data:
                     logger.debug("No more data to receive, closing local socket!")
                     self.emit("outgoing_data_available", self, eof=True)
-                    self._upstream_socket.shutdown(socket.SHUT_WR)
+                    self._upstream.shutdown(socket.SHUT_WR)
                     break
 
                 self._outgoing_buffer.extend(data)
                 self.emit("outgoing_data_available", self)
 
         except (OSError, ssl.SSLError):
-            logger.error("Something failed, killing MITM pipe...")
+            logger.error("Something failed, killing pipe...")
             self.stop()
 
     def _read_from_upstream(self):
         try:
             while not self._halt:
                 logger.debug("Receiving data from remote socket...")
-                data = self._upstream_socket.recv(BUFSIZE)
+                data = self._upstream.recv(BUFSIZE)
                 logger.debug(f"Received {len(data)} bytes.")
 
                 if not data:
                     logger.debug("No more data to receive, closing remote socket!")
                     self.emit("incoming_data_available", self, eof=True)
-                    self._downstream_socket.shutdown(socket.SHUT_WR)
+                    self._downstream.shutdown(socket.SHUT_WR)
                     break
 
                 self._incoming_buffer.extend(data)
                 self.emit("incoming_data_available", self)
 
         except (OSError, ssl.SSLError):
-            logger.error("Something failed, killing MITM pipe...")
+            logger.error("Something failed, killing pipe...")
             self.stop()
 
     def get_incoming_buffer(self) -> bytearray:
@@ -89,8 +97,8 @@ class Pipe(EventMixin):
 
     def write_to_upstream(self, buf):
         logger.debug(f"Writing {len(buf)} bytes to remote socket...")
-        self._upstream_socket.sendall(buf)
+        self._upstream.sendall(buf)
 
     def write_to_downstream(self, buf):
         logger.debug(f"Writing {len(buf)} bytes to local socket...")
-        self._downstream_socket.sendall(buf)
+        self._downstream.sendall(buf)
