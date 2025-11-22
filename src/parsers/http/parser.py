@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 _CRLF = b"\r\n"
 _HDR_END = b"\r\n\r\n"
 
+
 @dataclass
 class HTTPMessage:
     start_line: bytes
@@ -39,6 +40,7 @@ class HTTPMessage:
         header_lines = [k + b": " + v for (k, v) in self.headers]
         headers_blob = _CRLF.join(header_lines)
         return self.start_line + headers_blob + _HDR_END + self.body
+
 
 class HTTPParser:
     """
@@ -108,9 +110,7 @@ class HTTPParser:
                     status_code = int(parts[1])
             except ValueError:
                 pass
-            if status_code is not None and (
-                100 <= status_code < 200 or status_code in (101, 204, 304)
-            ):
+            if status_code is not None and (100 <= status_code < 200 or status_code in (101, 204, 304)):
                 msg = HTTPMessage(
                     start_line=start_line,
                     headers=headers,
@@ -216,8 +216,8 @@ class HTTPParser:
             if len(buf) < need:
                 return None
 
-            out.extend(buf[i:i+size])
+            out.extend(buf[i : i + size])
             i += size
-            if buf[i:i+2] != _CRLF:
+            if buf[i : i + 2] != _CRLF:
                 return None
             i += 2

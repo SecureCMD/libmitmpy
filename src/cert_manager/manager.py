@@ -19,6 +19,7 @@ ROOT_KEY = "encripton.key"
 CERT = "{domain}.crt.pem"
 KEY = "{domain}.key.pem"
 
+
 class CertManager:
     def __init__(self):
         self.cert_cache_dir = Path(CERTS_PATH)
@@ -50,10 +51,12 @@ class CertManager:
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
         # Create subject and issuer (self-signed)
-        subject = issuer = x509.Name([
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"EncriptonMITM"),
-            x509.NameAttribute(NameOID.COMMON_NAME, u"EncriptonMITM Root CA"),
-        ])
+        subject = issuer = x509.Name(
+            [
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "EncriptonMITM"),
+                x509.NameAttribute(NameOID.COMMON_NAME, "EncriptonMITM Root CA"),
+            ]
+        )
 
         cert = (
             x509.CertificateBuilder()
@@ -79,11 +82,8 @@ class CertManager:
                 critical=True,
             )
             .add_extension(
-                x509.ExtendedKeyUsage([
-                    ExtendedKeyUsageOID.SERVER_AUTH,
-                    ExtendedKeyUsageOID.CLIENT_AUTH
-                ]),
-                critical=False
+                x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH, ExtendedKeyUsageOID.CLIENT_AUTH]),
+                critical=False,
             )
             .sign(key, hashes.SHA256())
         )
@@ -103,17 +103,17 @@ class CertManager:
             f.write(key_pem)
 
         # TODO: delete previous versions
-        subprocess.run([
-            "sudo",
-            "security",
-            "add-trusted-cert",
-            "-d",
-            "-r"
-            "trustRoot",
-            "-k"
-            "/Library/Keychains/System.keychain",
-            (self.cert_cache_dir / self.root_cert).resolve(),
-        ])
+        subprocess.run(
+            [
+                "sudo",
+                "security",
+                "add-trusted-cert",
+                "-d",
+                "-rtrustRoot",
+                "-k/Library/Keychains/System.keychain",
+                (self.cert_cache_dir / self.root_cert).resolve(),
+            ]
+        )
 
         return cert_pem, key_pem
 
@@ -121,11 +121,7 @@ class CertManager:
         cert_path = self.cert_cache_dir / CERT.format(domain=domain)
         key_path = self.cert_cache_dir / KEY.format(domain=domain)
 
-        if (
-            not os.path.exists(cert_path)
-            or not os.path.exists(key_path)
-            or not self.is_cert_valid(domain)
-        ):
+        if not os.path.exists(cert_path) or not os.path.exists(key_path) or not self.is_cert_valid(domain):
             logger.info(f"Generating spoofed cert for {domain}")
             cert_pem, key_pem = self.generate_signed_cert(domain)
 
@@ -162,9 +158,11 @@ class CertManager:
         # Generate new key for the fake cert
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
-        subject = x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, domain),
-        ])
+        subject = x509.Name(
+            [
+                x509.NameAttribute(NameOID.COMMON_NAME, domain),
+            ]
+        )
 
         cert = (
             x509.CertificateBuilder()
@@ -179,9 +177,11 @@ class CertManager:
                 critical=False,
             )
             .add_extension(
-                x509.ExtendedKeyUsage([
-                    ExtendedKeyUsageOID.SERVER_AUTH,
-                ]),
+                x509.ExtendedKeyUsage(
+                    [
+                        ExtendedKeyUsageOID.SERVER_AUTH,
+                    ]
+                ),
                 critical=False,
             )
             .add_extension(

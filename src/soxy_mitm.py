@@ -8,8 +8,10 @@ from pipe_manager import PipeManager
 
 logger = logging.getLogger(__name__)
 
-class Soxy():
-    """ Manage exit status """
+
+class Soxy:
+    """Manage exit status"""
+
     def __init__(self, local_addr: str, local_port):
         self._halt = False
         self.local_addr = local_addr
@@ -28,7 +30,7 @@ class Soxy():
 
         # Bind the socket to address and listen for connections made to the socket
         try:
-            logger.info(f'Bind {self.local_port}')
+            logger.info(f"Bind {self.local_port}")
             self.main_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.main_socket.bind((self.local_addr, self.local_port))
         except socket.error as err:

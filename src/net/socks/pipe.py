@@ -9,8 +9,13 @@ BUFSIZE = 2048
 
 logger = logging.getLogger(__name__)
 
+
 class Pipe(EventMixin):
-    def __init__(self, downstream: SafeSocket | SafeConnection, upstream: SafeSocket | SafeConnection):
+    def __init__(
+        self,
+        downstream: SafeSocket | SafeConnection,
+        upstream: SafeSocket | SafeConnection,
+    ):
         super().__init__()
 
         self._halt = False

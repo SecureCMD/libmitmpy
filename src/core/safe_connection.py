@@ -7,6 +7,7 @@ from OpenSSL import SSL, crypto
 
 logger = logging.getLogger(__name__)
 
+
 class SafeConnection:
     def __init__(self, socket):
         self._socket = socket
@@ -49,7 +50,7 @@ class SafeConnection:
         try:
             return self._conn.recv(bufsize, flags)
         except SSL.SysCallError as e:
-            if e.args == (-1, 'Unexpected EOF'):
+            if e.args == (-1, "Unexpected EOF"):
                 return b""  # treat as closed connection
             raise
 

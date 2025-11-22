@@ -7,9 +7,9 @@ class Thread(PThread):
         super().__init__(*args, **kwargs)
         self.c_ident = hex(id(uuid4()))
 
-
     def __str__(self):
         return f"{self.name} {self.c_ident}"
+
 
 class AutoThread(PThread):
     def __init__(self, *args, **kwargs):

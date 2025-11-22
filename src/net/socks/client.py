@@ -5,24 +5,24 @@ from typing import Tuple
 
 from core import SafeSocket
 
-VER = b'\x05' # Protocol version
+VER = b"\x05"  # Protocol version
 
-M_NOAUTH = b'\x00' # No authentication required
-M_AUTH = b'\x02' # User / password authentication
-M_NOTAVAILABLE = b'\xff' # No acceptable methods
+M_NOAUTH = b"\x00"  # No authentication required
+M_AUTH = b"\x02"  # User / password authentication
+M_NOTAVAILABLE = b"\xff"  # No acceptable methods
 
-CMD_CONNECT = b'\x01' # Connect
+CMD_CONNECT = b"\x01"  # Connect
 
-ATYP_IPV4 = b'\x01' # IPv4 address
-ATYP_DOMAINNAME = b'\x03' # Domain name
-ATYP_IPV6 = b'\x04' # IPv6 address
+ATYP_IPV4 = b"\x01"  # IPv4 address
+ATYP_DOMAINNAME = b"\x03"  # Domain name
+ATYP_IPV6 = b"\x04"  # IPv6 address
 
 logger = logging.getLogger(__name__)
+
 
 class Client:
     def __init__(self, socket: SafeSocket):
         self.socket = socket
-
 
     def handshake(self) -> bool:
         # header sent by the client
@@ -73,32 +73,31 @@ class Client:
                 self.socket.close()
             return b"", 0
 
-        if ver != VER or cmd != CMD_CONNECT or rsv != b'\x00':
+        if ver != VER or cmd != CMD_CONNECT or rsv != b"\x00":
             return b"", 0
 
         if atyp == ATYP_IPV4:
             target = self.socket.recvall(6)
             dst_addr = socket.inet_ntoa(target[:-2])
-            dst_port = unpack('>H', target[-2:])[0]
+            dst_port = unpack(">H", target[-2:])[0]
         elif atyp == ATYP_DOMAINNAME:
             size = self.socket.recvall(1)
             target = self.socket.recvall(size[0] + 2)
             dst_addr = target[0:-2]
-            dst_port = unpack('>H', target[-2:])[0]
+            dst_port = unpack(">H", target[-2:])[0]
         elif atyp == ATYP_IPV6:
             target = self.socket.recvall(16)
             dst_addr = socket.inet_ntop(target[:-2])
-            dst_port = unpack('>H', target[-2:])[0]
+            dst_port = unpack(">H", target[-2:])[0]
         else:
             return b"", 0
 
         return dst_addr, dst_port
 
     def reply_with_invalid_dst_addr(self):
-        reply = VER + b'\x01' + b'\x00' + ATYP_IPV4 + b'\x00' * 6
+        reply = VER + b"\x01" + b"\x00" + ATYP_IPV4 + b"\x00" * 6
         self.socket.sendall(reply)
         self.socket.close()
-
 
     def connect_to_dst(self, dst_addr: str, dst_port: int) -> SafeSocket:
         # Server Reply
@@ -114,7 +113,7 @@ class Client:
             return None
 
         if not socket_dst:
-            reply = VER + b'\x01' + b'\x00' + ATYP_IPV4 + b'\x00' * 6
+            reply = VER + b"\x01" + b"\x00" + ATYP_IPV4 + b"\x00" * 6
             self.socket.sendall(reply)
             self.socket.close()
             return None
@@ -122,7 +121,7 @@ class Client:
         bnd = socket.inet_aton(socket_dst.getsockname()[0])
         bnd += pack(">H", socket_dst.getsockname()[1])
 
-        reply = VER + b'\x00' + b'\x00' + ATYP_IPV4 + bnd
+        reply = VER + b"\x00" + b"\x00" + ATYP_IPV4 + bnd
 
         self.socket.sendall(reply)
         return socket_dst

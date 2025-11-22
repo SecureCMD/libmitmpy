@@ -6,8 +6,8 @@ resp = requests.get(
         http="socks5h://localhost:9090",
         https="socks5h://localhost:9090",
     ),
-    headers={'Accept-Encoding': 'identity'},
-    verify="../certs/encripton.pem"
+    headers={"Accept-Encoding": "identity"},
+    verify="../certs/encripton.pem",
     # verify="/Users/alexandernst/.mitmproxy/mitmproxy-ca.pem"
 )
 

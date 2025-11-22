@@ -3,6 +3,7 @@ from threading import RLock
 
 logger = logging.getLogger(__name__)
 
+
 class EventMixin:
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

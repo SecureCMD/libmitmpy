@@ -5,6 +5,7 @@ from parsers.http.parser import HTTPMessage
 
 logger = logging.getLogger(__name__)
 
+
 class HTTPTransformer:
     def transform(self, msg: HTTPMessage) -> bytes:
         # Only attempt to modify HTTP responses with a concrete body length
@@ -16,10 +17,7 @@ class HTTPTransformer:
         body = msg.body
 
         # Example modification: naive HTML footer injection
-        modified_body = body.replace(
-            b"</html>",
-            b"OLA K ASE MODIFICA TRAFICO ENCRIPTADO O K ASE?</html>"
-        )
+        modified_body = body.replace(b"</html>", b"OLA K ASE MODIFICA TRAFICO ENCRIPTADO O K ASE?</html>")
 
         # Update headers:
         # - If original was chunked, remove Transfer-Encoding and set Content-Length

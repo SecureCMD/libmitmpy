@@ -9,6 +9,7 @@ from transformers.http import HTTPTransformer
 
 logger = logging.getLogger(__name__)
 
+
 class PipeManager:
     def __init__(self):
         self.pipes: List[Pipe] = []

@@ -7,6 +7,7 @@ from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
+
 class SafeSocket:
     def __init__(self, socket: socket.socket | ssl.SSLSocket):
         self._socket = socket
@@ -17,7 +18,7 @@ class SafeSocket:
 
     @staticmethod
     def create():
-        """ Create an INET, STREAMing socket """
+        """Create an INET, STREAMing socket"""
         try:
             _socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             _socket = SafeSocket(_socket)

@@ -7,11 +7,12 @@ from core import SafeSocket
 logger = logging.getLogger(__name__)
 
 
-TLS_HANDSHAKE = b'\x16'
-TLS_1_0 = b'\x03\x01'
-TLS_1_2 = b'\x03\x03'
-TLS_1_3 = b'\x03\x03' # yeah, this is the same as TLS_1_2 because fuck everything
-TLS_HANDSHAKE_TYPE_CLIENT_HELLO = b'\x01'
+TLS_HANDSHAKE = b"\x16"
+TLS_1_0 = b"\x03\x01"
+TLS_1_2 = b"\x03\x03"
+TLS_1_3 = b"\x03\x03"  # yeah, this is the same as TLS_1_2 because fuck everything
+TLS_HANDSHAKE_TYPE_CLIENT_HELLO = b"\x01"
+
 
 def get_sni_alpn(sock: SafeSocket) -> Tuple[str, Tuple[str]]:
     """
@@ -23,7 +24,7 @@ def get_sni_alpn(sock: SafeSocket) -> Tuple[str, Tuple[str]]:
     record_hdr = sock.peekall(5)
     content_type = record_hdr[0:1]
     version = record_hdr[1:3]
-    total_len = unpack('!H', record_hdr[3:5])[0]
+    total_len = unpack("!H", record_hdr[3:5])[0]
 
     if content_type != TLS_HANDSHAKE:
         return None, []
@@ -52,7 +53,7 @@ def get_sni_alpn(sock: SafeSocket) -> Tuple[str, Tuple[str]]:
     pos += 1 + session_id_len
 
     # Cipher Suites
-    cipher_suites_len = unpack('!H', data[pos:pos+2])[0]
+    cipher_suites_len = unpack("!H", data[pos : pos + 2])[0]
     pos += 2 + cipher_suites_len
 
     # Compression Methods
@@ -62,7 +63,7 @@ def get_sni_alpn(sock: SafeSocket) -> Tuple[str, Tuple[str]]:
     # --- Step 4: Extensions ---
     if pos + 2 > len(data):
         return None, []
-    extensions_len = unpack('!H', data[pos:pos+2])[0]
+    extensions_len = unpack("!H", data[pos : pos + 2])[0]
     pos += 2
 
     sni = None
@@ -70,22 +71,22 @@ def get_sni_alpn(sock: SafeSocket) -> Tuple[str, Tuple[str]]:
     end = pos + extensions_len
 
     while pos + 4 <= end:
-        ext_type = unpack('!H', data[pos:pos+2])[0]
-        ext_len = unpack('!H', data[pos+2:pos+4])[0]
+        ext_type = unpack("!H", data[pos : pos + 2])[0]
+        ext_len = unpack("!H", data[pos + 2 : pos + 4])[0]
         pos += 4
-        ext_data = data[pos:pos+ext_len]
+        ext_data = data[pos : pos + ext_len]
 
         if ext_type == 0x00 and ext_len >= 5:  # SNI
-            sni_len = unpack('!H', ext_data[3:5])[0]
-            sni = ext_data[5:5+sni_len].decode('utf-8', errors='ignore')
+            sni_len = unpack("!H", ext_data[3:5])[0]
+            sni = ext_data[5 : 5 + sni_len].decode("utf-8", errors="ignore")
 
         elif ext_type == 0x10 and ext_len > 2:  # ALPN
-            alpn_list_len = unpack('!H', ext_data[:2])[0]
+            alpn_list_len = unpack("!H", ext_data[:2])[0]
             p = 2
             while p < 2 + alpn_list_len:
                 proto_len = ext_data[p]
                 p += 1
-                alpn_list.append(ext_data[p:p+proto_len].decode('utf-8', errors='ignore'))
+                alpn_list.append(ext_data[p : p + proto_len].decode("utf-8", errors="ignore"))
                 p += proto_len
 
         pos += ext_len
