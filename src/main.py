@@ -32,6 +32,7 @@ LOCAL_PORT = 9090
 
 
 def exit_handler(signum, frame):
+    logger.debug(f"exit_handler called with {signum=}")
     soxy.stop()
 
 
