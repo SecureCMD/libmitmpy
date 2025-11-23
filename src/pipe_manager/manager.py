@@ -1,6 +1,8 @@
 import logging
+from queue import Empty, Queue
 from typing import List
 
+from core import AutoThread
 from net.socks import Pipe
 from parsers.dummy import DummyParser
 from parsers.http import HTTPParser
@@ -13,6 +15,8 @@ logger = logging.getLogger(__name__)
 class PipeManager:
     def __init__(self):
         self.pipes: List[Pipe] = []
+        self._event_queue = Queue()
+        self._halt = False
 
         self.parser = HTTPParser()
         self.transformer = HTTPTransformer()
@@ -20,22 +24,62 @@ class PipeManager:
         self.parser = DummyParser()
         self.transformer = DummyTransformer()
 
+        # Start event dispatcher thread
+        self._dispatcher = AutoThread(target=self._dispatch_events, name="EventDispatcher")
+
+    def _dispatch_events(self):
+        while not self._halt:
+            try:
+                event_type, pipe, kwargs = self._event_queue.get(timeout=0.5)
+                logger.debug(f"Dispatching {event_type} for pipe {pipe}")
+
+                match event_type:
+                    case "pipe_finished":
+                        self.remove(pipe)
+                    case "outgoing_data_available":
+                        self.flush_outgoing_data(pipe, **kwargs)
+                    case "incoming_data_available":
+                        self.flush_incoming_data(pipe, **kwargs)
+                    case _:
+                        logger.warning(f"Unknown event type: {event_type}")
+
+                self._event_queue.task_done()
+            except Empty:
+                continue
+            except Exception as e:
+                if not isinstance(e, TimeoutError):
+                    logger.exception("Error dispatching event")
+
+    def _enqueue_event(self, event_type: str, pipe: Pipe, **kwargs):
+        logger.debug(f"Enqueuing {event_type} for pipe {pipe}")
+        self._event_queue.put((event_type, pipe, kwargs))
+
     def add(self, pipe):
         self.pipes.append(pipe)
-        pipe.on("pipe_finished", self.remove)
-        pipe.on("outgoing_data_available", self.flush_outgoing_data)
-        pipe.on("incoming_data_available", self.flush_incoming_data)
+        pipe.on("pipe_finished", lambda pipe: self._enqueue_event("pipe_finished", pipe))
+        pipe.on(
+            "outgoing_data_available",
+            lambda pipe, **kwargs: self._enqueue_event("outgoing_data_available", pipe, **kwargs),
+        )
+        pipe.on(
+            "incoming_data_available",
+            lambda pipe, **kwargs: self._enqueue_event("incoming_data_available", pipe, **kwargs),
+        )
 
         logger.info(f"Starting pipe {pipe}")
         pipe.start()
 
     def stop_all(self):
+        self._halt = True
         for pipe in self.pipes:
             logger.info(f"Stopping pipe {pipe}")
             pipe.stop()
 
+        # Wait for event queue to drain
+        self._event_queue.join()
+        self._dispatcher.join()
+
     def remove(self, pipe):
-        pipe.off("pipe_finished", self.remove)
         if pipe in self.pipes:
             logger.info(f"Stopping pipe {pipe}")
             pipe.stop()

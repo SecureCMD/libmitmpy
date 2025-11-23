@@ -67,7 +67,7 @@ class Pipe(EventMixin):
                     self._upstream.shutdown(socket.SHUT_WR)
                     break
 
-                self._outgoing_buffer.extend(data)
+                self.extend_outgoing_buffer(data)
                 self.emit("outgoing_data_available", self)
 
         except (OSError, ssl.SSLError):
@@ -87,12 +87,18 @@ class Pipe(EventMixin):
                     self._downstream.shutdown(socket.SHUT_WR)
                     break
 
-                self._incoming_buffer.extend(data)
+                self.extend_incoming_buffer(data)
                 self.emit("incoming_data_available", self)
 
         except (OSError, ssl.SSLError):
             logger.error("Something failed, killing pipe...")
             self.stop()
+
+    def extend_incoming_buffer(self, data: bytearray) -> None:
+        self._incoming_buffer.extend(data)
+
+    def extend_outgoing_buffer(self, data: bytearray) -> None:
+        self._outgoing_buffer.extend(data)
 
     def get_incoming_buffer(self) -> bytearray:
         return self._incoming_buffer
