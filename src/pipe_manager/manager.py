@@ -56,15 +56,9 @@ class PipeManager:
 
     def add(self, pipe):
         self.pipes.append(pipe)
-        pipe.on("pipe_finished", lambda pipe: self._enqueue_event("pipe_finished", pipe))
-        pipe.on(
-            "outgoing_data_available",
-            lambda pipe, **kwargs: self._enqueue_event("outgoing_data_available", pipe, **kwargs),
-        )
-        pipe.on(
-            "incoming_data_available",
-            lambda pipe, **kwargs: self._enqueue_event("incoming_data_available", pipe, **kwargs),
-        )
+        pipe.on("pipe_finished", lambda p: self._enqueue_event("pipe_finished", p))
+        pipe.on("outgoing_data_available", lambda p, **kw: self._enqueue_event("outgoing_data_available", p, **kw))
+        pipe.on("incoming_data_available", lambda p, **kw: self._enqueue_event("incoming_data_available", p, **kw))
 
         logger.info(f"Starting pipe {pipe}")
         pipe.start()
