@@ -116,10 +116,13 @@ class Soxy:
             AutoThread(target=self.handle_client, args=[client_socket], name="<->")
 
     def stop(self):
+        if self._halt:
+            return
+
+        self._halt = True
+
         try:
             self.pipemanager.stop_all()
-
-            self._halt = True
             self.main_socket.close()
         except Exception:
             pass

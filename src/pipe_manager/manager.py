@@ -1,6 +1,7 @@
 import logging
 from collections import defaultdict
 from queue import Empty, Queue
+from typing import Any
 
 from core import AutoThread
 from net.socks import Pipe
@@ -20,7 +21,7 @@ class PipeManager:
                 "pending_incoming": 0,
             }
         )
-        self._event_queue = Queue()
+        self._event_queue: Queue[tuple[str, Pipe, dict[str, Any]]] = Queue()
         self._halt = False
 
         self.parser = DummyParser()
@@ -46,19 +47,23 @@ class PipeManager:
                         else:
                             logger.debug("Pipe hasn't been drained yet, rescheduling removal...")
                             self._enqueue_event(event_type, pipe)
+
                     case "outgoing_data_available":
-                        # pipe.pause()
-                        # for parse, transformer in self.parsers_and_transformers:
-                        self.process_outgoing_data(pipe, **kwargs)
-                        self.pipes[pipe]["pending_outgoing"] -= 1
-                        # pipe.resume()
+                        with pipe.outgoing_locked():
+                            # for parse, transformer in self.parsers_and_transformers:
+                            self.process_outgoing_data(pipe, **kwargs)
+                            self.pipes[pipe]["pending_outgoing"] -= 1
+
                     case "incoming_data_available":
-                        self.process_incoming_data(pipe, **kwargs)
-                        self.pipes[pipe]["pending_incoming"] -= 1
+                        with pipe.incoming_locked():
+                            self.process_incoming_data(pipe, **kwargs)
+                            self.pipes[pipe]["pending_incoming"] -= 1
                     case _:
                         logger.warning(f"Unknown event type: {event_type}")
 
                 self._event_queue.task_done()
+
+                pipe = None  # this will force the GC to collect the pipe object
             except Empty:
                 continue
             except Exception as e:
@@ -88,6 +93,9 @@ class PipeManager:
         pipe.start()
 
     def stop_all(self):
+        if self._halt:
+            return
+
         self._halt = True
 
         for pipe in self.pipes.keys():

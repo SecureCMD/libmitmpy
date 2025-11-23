@@ -1,6 +1,8 @@
 import logging
 import socket
 import ssl
+from contextlib import contextmanager
+from threading import Lock
 
 from core import SafeConnection, SafeSocket, Thread
 from mixins import EventMixin
@@ -25,6 +27,9 @@ class Pipe(EventMixin):
 
         self._outgoing_buffer = bytearray()
         self._incoming_buffer = bytearray()
+
+        self._outgoing_lock = Lock()
+        self._incoming_lock = Lock()
 
         logger.info(f"Created pipe {self} for sockets [{downstream}, {upstream}]")
 
@@ -69,7 +74,8 @@ class Pipe(EventMixin):
                     self._upstream.shutdown(socket.SHUT_WR)
                     break
 
-                self._outgoing_buffer.extend(data)
+                with self.outgoing_locked() as buf:
+                    buf.extend(data)
                 self.emit("outgoing_data_available", self)
 
         except (OSError, ssl.SSLError):
@@ -89,7 +95,8 @@ class Pipe(EventMixin):
                     self._downstream.shutdown(socket.SHUT_WR)
                     break
 
-                self._incoming_buffer.extend(data)
+                with self.incoming_locked() as buf:
+                    buf.extend(data)
                 self.emit("incoming_data_available", self)
 
         except (OSError, ssl.SSLError):
@@ -109,3 +116,19 @@ class Pipe(EventMixin):
     def write_to_downstream(self, buf):
         logger.debug(f"Writing {len(buf)} bytes to local socket...")
         self._downstream.sendall(buf)
+
+    @contextmanager
+    def outgoing_locked(self):
+        self._outgoing_lock.acquire()
+        try:
+            yield self._outgoing_buffer
+        finally:
+            self._outgoing_lock.release()
+
+    @contextmanager
+    def incoming_locked(self):
+        self._incoming_lock.acquire()
+        try:
+            yield self._incoming_buffer
+        finally:
+            self._incoming_lock.release()
