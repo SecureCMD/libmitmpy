@@ -14,9 +14,12 @@ class EventMixin:
         with self._events_lock:
             self._events.setdefault(event, []).append(callback)
 
-    def off(self, event, callback):
+    def off(self, event, callback=None):
         with self._events_lock:
-            self._events.get(event, []).remove(callback)
+            if callback:
+                self._events.get(event, []).remove(callback)
+            else:
+                self._events.pop(event)
 
     def emit(self, event, *args, **kwargs):
         # Lock, copy callbacks and unlock so that we don't block the entire

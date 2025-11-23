@@ -28,41 +28,43 @@ class Pipe(EventMixin):
 
         logger.info(f"Created pipe {self} for sockets [{downstream}, {upstream}]")
 
-    def __str__(self):
-        return f"{hex(id(self))}"
-
-    def start(self):
-        self.t1 = Thread(target=self._read_from_downstream, args=(), name="->")
-        self.t2 = Thread(target=self._read_from_upstream, args=(), name="<-")
-
-        logger.info(f"Created stream threads [{self.t1}, {self.t2}] for pipe {self}")
-
-        self.t1.start()
-        self.t2.start()
-
-        self.t1.join()
-        self.t2.join()
-
-        self.emit("pipe_finished", self)
-
-    def stop(self):
-        self._halt = True
-
+    def __del__(self):
+        logger.debug(f"Closing up/downstream sockets of pipe {self}")
         self._downstream.shutdown(socket.SHUT_RDWR)
         self._upstream.shutdown(socket.SHUT_RDWR)
 
         self._downstream.close()
         self._upstream.close()
 
+    def __str__(self):
+        return f"{hex(id(self))}"
+
+    def start(self):
+        t1 = Thread(target=self._read_from_downstream, args=(), name="->")
+        t2 = Thread(target=self._read_from_upstream, args=(), name="<-")
+
+        logger.info(f"Created stream threads [{t1}, {t2}] for pipe {self}")
+
+        t1.start()
+        t2.start()
+
+        t1.join()
+        t2.join()
+
+        self.emit("pipe_finished", self)
+
+    def stop(self):
+        self._halt = True
+
     def _read_from_downstream(self):
         try:
             while not self._halt:
-                logger.debug("Receiving data from local socket...")
+                logger.debug("Reading data from local socket...")
                 data = self._downstream.recv(BUFSIZE)
-                logger.debug(f"Received {len(data)} bytes.")
+                logger.debug(f"Read {len(data)} bytes.")
 
                 if not data:
-                    logger.debug("No more data to receive, closing local socket!")
+                    logger.debug("No more data to read from downstream!")
                     self.emit("outgoing_data_available", self, eof=True)
                     self._upstream.shutdown(socket.SHUT_WR)
                     break
@@ -72,17 +74,17 @@ class Pipe(EventMixin):
 
         except (OSError, ssl.SSLError):
             logger.error("Something failed, killing pipe...")
-            self.stop()
+            self.emit("outgoing_data_available", self, eof=True)
 
     def _read_from_upstream(self):
         try:
             while not self._halt:
-                logger.debug("Receiving data from remote socket...")
+                logger.debug("Reading data from remote socket...")
                 data = self._upstream.recv(BUFSIZE)
-                logger.debug(f"Received {len(data)} bytes.")
+                logger.debug(f"Read {len(data)} bytes.")
 
                 if not data:
-                    logger.debug("No more data to receive, closing remote socket!")
+                    logger.debug("No more data to read from upstream!")
                     self.emit("incoming_data_available", self, eof=True)
                     self._downstream.shutdown(socket.SHUT_WR)
                     break
@@ -92,7 +94,7 @@ class Pipe(EventMixin):
 
         except (OSError, ssl.SSLError):
             logger.error("Something failed, killing pipe...")
-            self.stop()
+            self.emit("incoming_data_available", self, eof=True)
 
     def get_incoming_buffer(self) -> bytearray:
         return self._incoming_buffer

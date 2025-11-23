@@ -1,6 +1,6 @@
 import logging
+from collections import defaultdict
 from queue import Empty, Queue
-from typing import List
 
 from core import AutoThread
 from net.socks import Pipe
@@ -14,15 +14,20 @@ logger = logging.getLogger(__name__)
 
 class PipeManager:
     def __init__(self):
-        self.pipes: List[Pipe] = []
+        self.pipes: dict[Pipe, dict] = defaultdict(
+            lambda: {
+                "pending_outgoing": 0,
+                "pending_incoming": 0,
+            }
+        )
         self._event_queue = Queue()
         self._halt = False
 
-        self.parser = HTTPParser()
-        self.transformer = HTTPTransformer()
-
         self.parser = DummyParser()
         self.transformer = DummyTransformer()
+
+        self.parser = HTTPParser()
+        self.transformer = HTTPTransformer()
 
         # Start event dispatcher thread
         self._dispatcher = AutoThread(target=self._dispatch_events, name="EventDispatcher")
@@ -35,11 +40,21 @@ class PipeManager:
 
                 match event_type:
                     case "pipe_finished":
-                        self.remove(pipe)
+                        logger.debug("Attempting to remove pipe...")
+                        if self.pipes[pipe]["pending_outgoing"] + self.pipes[pipe]["pending_incoming"] == 0:
+                            self.remove(pipe)
+                        else:
+                            logger.debug("Pipe hasn't been drained yet, rescheduling removal...")
+                            self._enqueue_event(event_type, pipe)
                     case "outgoing_data_available":
-                        self.flush_outgoing_data(pipe, **kwargs)
+                        # pipe.pause()
+                        # for parse, transformer in self.parsers_and_transformers:
+                        self.process_outgoing_data(pipe, **kwargs)
+                        self.pipes[pipe]["pending_outgoing"] -= 1
+                        # pipe.resume()
                     case "incoming_data_available":
-                        self.flush_incoming_data(pipe, **kwargs)
+                        self.process_incoming_data(pipe, **kwargs)
+                        self.pipes[pipe]["pending_incoming"] -= 1
                     case _:
                         logger.warning(f"Unknown event type: {event_type}")
 
@@ -52,10 +67,19 @@ class PipeManager:
 
     def _enqueue_event(self, event_type: str, pipe: Pipe, **kwargs):
         logger.debug(f"Enqueuing {event_type} for pipe {pipe}")
+
+        match event_type:
+            case "outgoing_data_available":
+                self.pipes[pipe]["pending_outgoing"] += 1
+            case "incoming_data_available":
+                self.pipes[pipe]["pending_incoming"] += 1
+
         self._event_queue.put((event_type, pipe, kwargs))
 
     def add(self, pipe):
-        self.pipes.append(pipe)
+        logger.debug(f"Adding pipe {pipe} to pipe manager")
+
+        logger.debug(f"Subscribing to events of pipe {pipe}")
         pipe.on("pipe_finished", lambda p: self._enqueue_event("pipe_finished", p))
         pipe.on("outgoing_data_available", lambda p, **kw: self._enqueue_event("outgoing_data_available", p, **kw))
         pipe.on("incoming_data_available", lambda p, **kw: self._enqueue_event("incoming_data_available", p, **kw))
@@ -65,23 +89,28 @@ class PipeManager:
 
     def stop_all(self):
         self._halt = True
-        for pipe in self.pipes:
+
+        for pipe in self.pipes.keys():
             logger.info(f"Stopping pipe {pipe}")
             pipe.stop()
 
-        # Wait for event queue to drain
+        logger.debug("Draining all pipes...")
         self._event_queue.join()
         self._dispatcher.join()
 
     def remove(self, pipe):
-        if pipe in self.pipes:
-            logger.info(f"Stopping pipe {pipe}")
-            pipe.stop()
+        logger.info(f"Stopping pipe {pipe}")
+        pipe.stop()
 
-            logger.info(f"Removing pipe {pipe}")
-            self.pipes.remove(pipe)
+        logger.debug(f"Unsubscribing from events of pipe {pipe}")
+        pipe.off("pipe_finished")
+        pipe.off("outgoing_data_available")
+        pipe.off("incoming_data_available")
 
-    def flush_outgoing_data(self, pipe, eof=False):
+        logger.debug(f"Removing pipe {pipe} from pipe manager")
+        self.pipes.pop(pipe)
+
+    def process_outgoing_data(self, pipe, eof=False):
         buf = pipe.get_outgoing_buffer()
 
         # Try to parse and forward as much as possible from buf
@@ -102,7 +131,7 @@ class PipeManager:
             pipe.write_to_upstream(buf)
             buf.clear()
 
-    def flush_incoming_data(self, pipe, eof=False):
+    def process_incoming_data(self, pipe, eof=False):
         buf = pipe.get_incoming_buffer()
 
         # Try to parse and forward as much as possible from buf
