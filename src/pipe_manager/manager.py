@@ -33,6 +33,9 @@ class PipeManager:
         # Start event dispatcher thread
         self._dispatcher = AutoThread(target=self._dispatch_events, name="EventDispatcher")
 
+    def _any_pending_tasks(self, pipe):
+        return self.pipes[pipe]["pending_outgoing"] + self.pipes[pipe]["pending_incoming"] > 0
+
     def _dispatch_events(self):
         while not self._halt:
             try:
@@ -42,7 +45,7 @@ class PipeManager:
                 match event_type:
                     case "pipe_finished":
                         logger.debug("Attempting to remove pipe...")
-                        if self.pipes[pipe]["pending_outgoing"] + self.pipes[pipe]["pending_incoming"] == 0:
+                        if not self._any_pending_tasks(pipe):
                             self.remove(pipe)
                         else:
                             logger.debug("Pipe hasn't been drained yet, rescheduling removal...")
