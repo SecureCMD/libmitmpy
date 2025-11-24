@@ -1,6 +1,7 @@
 import logging
 from collections import defaultdict
 from queue import Empty, Queue
+from threading import Lock
 from typing import Any
 
 from core import AutoThread
@@ -21,6 +22,7 @@ class PipeManager:
                 "pending_incoming": 0,
             }
         )
+        self._pipes_lock = Lock()
         self._event_queue: Queue[tuple[str, Pipe, dict[str, Any]]] = Queue()
         self._halt = False
 
@@ -55,12 +57,14 @@ class PipeManager:
                         with pipe.outgoing_locked():
                             # for parse, transformer in self.parsers_and_transformers:
                             self.process_outgoing_data(pipe, **kwargs)
-                            self.pipes[pipe]["pending_outgoing"] -= 1
+                            with self._pipes_lock:
+                                self.pipes[pipe]["pending_outgoing"] -= 1
 
                     case "incoming_data_available":
                         with pipe.incoming_locked():
                             self.process_incoming_data(pipe, **kwargs)
-                            self.pipes[pipe]["pending_incoming"] -= 1
+                            with self._pipes_lock:
+                                self.pipes[pipe]["pending_incoming"] -= 1
                     case _:
                         logger.warning(f"Unknown event type: {event_type}")
 
@@ -78,9 +82,11 @@ class PipeManager:
 
         match event_type:
             case "outgoing_data_available":
-                self.pipes[pipe]["pending_outgoing"] += 1
+                with self._pipes_lock:
+                    self.pipes[pipe]["pending_outgoing"] += 1
             case "incoming_data_available":
-                self.pipes[pipe]["pending_incoming"] += 1
+                with self._pipes_lock:
+                    self.pipes[pipe]["pending_incoming"] += 1
 
         self._event_queue.put((event_type, pipe, kwargs))
 
