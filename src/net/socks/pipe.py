@@ -61,6 +61,12 @@ class Pipe(EventMixin):
     def stop(self):
         self._halt = True
 
+    def close_downstream(self):
+        self._downstream.shutdown(socket.SHUT_WR)
+
+    def close_upstream(self):
+        self._upstream.shutdown(socket.SHUT_WR)
+
     def _read_from_downstream(self):
         try:
             while not self._halt:
@@ -71,7 +77,7 @@ class Pipe(EventMixin):
                 if not data:
                     logger.debug("No more data to read from downstream!")
                     self.emit("outgoing_data_available", self, eof=True)
-                    self._upstream.shutdown(socket.SHUT_WR)
+                    self.emit("no_more_outgoing_data_available", self)
                     break
 
                 with self.outgoing_locked() as buf:
@@ -92,7 +98,7 @@ class Pipe(EventMixin):
                 if not data:
                     logger.debug("No more data to read from upstream!")
                     self.emit("incoming_data_available", self, eof=True)
-                    self._downstream.shutdown(socket.SHUT_WR)
+                    self.emit("no_more_incoming_data_available", self)
                     break
 
                 with self.incoming_locked() as buf:

@@ -35,8 +35,16 @@ class PipeManager:
         # Start event dispatcher thread
         self._dispatcher = AutoThread(target=self._dispatch_events, name="EventDispatcher")
 
-    def _any_pending_tasks(self, pipe):
-        return self.pipes[pipe]["pending_outgoing"] + self.pipes[pipe]["pending_incoming"] > 0
+    def _pending_outgoing_tasks(self, pipe):
+        with self._pipes_lock:
+            return self.pipes[pipe]["pending_outgoing"] > 0
+
+    def _pending_incoming_tasks(self, pipe):
+        with self._pipes_lock:
+            return self.pipes[pipe]["pending_incoming"] > 0
+
+    def _pending_tasks(self, pipe):
+        return self._pending_outgoing_tasks(pipe) or self._pending_incoming_tasks(pipe)
 
     def _dispatch_events(self):
         while not self._halt:
@@ -47,10 +55,26 @@ class PipeManager:
                 match event_type:
                     case "pipe_finished":
                         logger.debug("Attempting to remove pipe...")
-                        if not self._any_pending_tasks(pipe):
+                        if not self._pending_tasks(pipe):
                             self.remove(pipe)
                         else:
                             logger.debug("Pipe hasn't been drained yet, rescheduling removal...")
+                            self._enqueue_event(event_type, pipe)
+
+                    case "no_more_outgoing_data_available":
+                        logger.debug("Attempting to close upstream of pipe...")
+                        if not self._pending_outgoing_tasks(pipe):
+                            pipe.close_upstream()
+                        else:
+                            logger.debug("Pipe hasn't been drained yet, rescheduling closing upstream...")
+                            self._enqueue_event(event_type, pipe)
+
+                    case "no_more_incoming_data_available":
+                        logger.debug("Attempting to close downstream of pipe...")
+                        if not self._pending_incoming_tasks(pipe):
+                            pipe.close_downstream()
+                        else:
+                            logger.debug("Pipe hasn't been drained yet, rescheduling closing downstream...")
                             self._enqueue_event(event_type, pipe)
 
                     case "outgoing_data_available":
@@ -94,9 +118,14 @@ class PipeManager:
         logger.debug(f"Adding pipe {pipe} to pipe manager")
 
         logger.debug(f"Subscribing to events of pipe {pipe}")
-        pipe.on("pipe_finished", lambda p: self._enqueue_event("pipe_finished", p))
-        pipe.on("outgoing_data_available", lambda p, **kw: self._enqueue_event("outgoing_data_available", p, **kw))
-        pipe.on("incoming_data_available", lambda p, **kw: self._enqueue_event("incoming_data_available", p, **kw))
+        for event in [
+            "pipe_finished",
+            "no_more_outgoing_data_available",
+            "no_more_incoming_data_available",
+            "outgoing_data_available",
+            "incoming_data_available",
+        ]:
+            pipe.on(event, lambda p, e=event, **kw: self._enqueue_event(e, p, **kw))
 
         logger.info(f"Starting pipe {pipe}")
         pipe.start()
