@@ -1,7 +1,7 @@
 import logging
 from typing import List, Tuple
 
-from parsers.http.parser import HTTPMessage
+from .parser import HTTPMessage
 
 logger = logging.getLogger(__name__)
 

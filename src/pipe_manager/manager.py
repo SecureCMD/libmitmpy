@@ -1,15 +1,13 @@
 import logging
 from collections import defaultdict
+from contextlib import suppress
 from queue import Empty, Queue
 from threading import Lock
 from typing import Any
 
 from core import AutoThread
+from interceptors import BaseInterceptor, DummyInterceptor, HTTPInterceptor
 from net.socks import Pipe
-from parsers.dummy import DummyParser
-from parsers.http import HTTPParser
-from transformers.dummy import DummyTransformer
-from transformers.http import HTTPTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +25,10 @@ class PipeManager:
         self._event_queue: Queue[tuple[str, Pipe, dict[str, Any]]] = Queue()
         self._halt = False
 
-        self.parsers = [HTTPParser(), DummyParser()]
-        self.transformers = [HTTPTransformer(), DummyTransformer()]
+        self.interceptors: list[BaseInterceptor] = [
+            DummyInterceptor(),
+            HTTPInterceptor(),
+        ]  # TODO: this should be per pipe
 
         # Start event dispatcher thread
         self._dispatcher = AutoThread(target=self._dispatch_events, name="EventDispatcher")
@@ -77,13 +77,17 @@ class PipeManager:
 
                     case "outgoing_data_available":
                         with pipe.outgoing_locked():
-                            self.process_outgoing_data(pipe, **kwargs)
+                            for interceptor in self.interceptors:
+                                with suppress(Exception):
+                                    interceptor.process_outgoing_data(pipe, **kwargs)
                             with self._pipes_lock:
                                 self.pipes[pipe]["pending_outgoing"] -= 1
 
                     case "incoming_data_available":
                         with pipe.incoming_locked():
-                            self.process_incoming_data(pipe, **kwargs)
+                            for interceptor in self.interceptors:
+                                with suppress(Exception):
+                                    interceptor.process_incoming_data(pipe, **kwargs)
                             with self._pipes_lock:
                                 self.pipes[pipe]["pending_incoming"] -= 1
                     case _:
@@ -149,59 +153,3 @@ class PipeManager:
         logger.debug(f"Removing pipe {pipe} from pipe manager")
         pipe = self.pipes.pop(pipe)
         self.dead_pipes.append(pipe)
-
-    def process_outgoing_data(self, pipe, eof=False):
-        buf = pipe.get_outgoing_buffer()
-
-        # Try to parse and forward as much as possible from buf
-        for parser, transformer in zip(self.parsers, self.transformers):
-            logger.debug(
-                f"Attempting to parse / transform with {type(parser).__name__} and {type(transformer).__name__}"
-            )
-            while True:
-                parsed, consumed = parser.parse(buf, eof=eof)
-                logger.debug(f"Consumed {consumed} bytes after parsing {len(buf)} of outgoing data")
-
-                if not parsed:
-                    logger.debug("Breaking...")
-                    break
-
-                transformed = transformer.transform(parsed)
-                logger.debug(f"Left with {len(transformed)} bytes after transforming...")
-
-                pipe.write_to_upstream(transformed)
-                del buf[:consumed]
-
-            # Fallback: pass-through any leftover bytes so target isn’t starved
-            if eof and buf:
-                logger.debug(f"{len(buf)} bytes left in the buffer, sending to target socket...")
-                pipe.write_to_upstream(buf)
-                buf.clear()
-
-    def process_incoming_data(self, pipe, eof=False):
-        buf = pipe.get_incoming_buffer()
-
-        # Try to parse and forward as much as possible from buf
-        for parser, transformer in zip(self.parsers, self.transformers):
-            logger.debug(
-                f"Attempting to parse / transform with {type(parser).__name__} and {type(transformer).__name__}"
-            )
-            while True:
-                parsed, consumed = parser.parse(buf, eof=eof)
-                logger.debug(f"Consumed {consumed} bytes after parsing {len(buf)} of incoming data")
-
-                if not parsed:
-                    logger.debug("Breaking...")
-                    break
-
-                transformed = transformer.transform(parsed)
-                logger.debug(f"Left with {len(transformed)} bytes after transforming...")
-
-                pipe.write_to_downstream(transformed)
-                del buf[:consumed]
-
-            # Fallback: pass-through any leftover bytes so client isn’t starved
-            if eof and buf:
-                logger.debug(f"{len(buf)} bytes left in the buffer, sending to local socket...")
-                pipe.write_to_downstream(buf)
-                buf.clear()
