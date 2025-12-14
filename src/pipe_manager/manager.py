@@ -52,7 +52,7 @@ class PipeManager:
 
                 match event_type:
                     case "pipe_finished":
-                        logger.debug("Attempting to stopping pipe...")
+                        logger.debug("Attempting to stop pipe...")
                         if not self._pending_tasks(pipe):
                             pipe.stop()
                         else:

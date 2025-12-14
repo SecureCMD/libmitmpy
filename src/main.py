@@ -3,7 +3,7 @@ import threading
 from datetime import datetime as dt
 from signal import SIGINT, SIGTERM, signal
 
-from soxy_mitm import Soxy
+from encripton import Encripton
 
 
 class ThreadIdentFilter(logging.Filter):
@@ -33,11 +33,11 @@ LOCAL_PORT = 9090
 
 def exit_handler(signum, frame):
     logger.debug(f"exit_handler called with {signum=}")
-    soxy.stop()
+    encripton.stop()
 
 
 signal(SIGINT, exit_handler)
 signal(SIGTERM, exit_handler)
 
-soxy = Soxy(local_addr=LOCAL_ADDR, local_port=LOCAL_PORT)
-soxy.start()
+encripton = Encripton(local_addr=LOCAL_ADDR, local_port=LOCAL_PORT)
+encripton.start()

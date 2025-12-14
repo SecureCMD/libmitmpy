@@ -9,7 +9,7 @@ from pipe_manager import PipeManager
 logger = logging.getLogger(__name__)
 
 
-class Soxy:
+class Encripton:
     """Manage exit status"""
 
     def __init__(self, local_addr: str, local_port):

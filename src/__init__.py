@@ -1,3 +1,3 @@
-from .soxy_mitm import Soxy
+from .encripton import Encripton
 
-__all__ = ["Soxy"]
+__all__ = ["Encripton"]
