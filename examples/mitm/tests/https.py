@@ -1,4 +1,8 @@
+from pathlib import Path
+
 import requests
+
+my_path = Path(__file__).resolve()
 
 resp = requests.get(
     "https://www.google.com/",
@@ -7,7 +11,7 @@ resp = requests.get(
         https="socks5h://localhost:9090",
     ),
     headers={"Accept-Encoding": "identity"},
-    verify="../certs/encripton.pem",
+    verify=my_path.parents[3] / "src/certs/encripton.pem",
     # verify="/Users/alexandernst/.mitmproxy/mitmproxy-ca.pem"
 )
 

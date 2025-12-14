@@ -1,3 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "encripton"
+version = "0.1.0"
+description = "Encripton / Libencripton"
+authors = [
+    { name = "Alexander Nestorov", email = "alexandernst@gmail.com" },
+    { name = "Juan Antonio Nache", email = "nache.nache@gmail.com" },
+]
+readme = "README.md"
+license = { text = "MIT License" }
+dependencies = [
+    "cryptography>=45.0.7",
+    "requests[socks]",
+    "pysocks",
+    "pyopenssl>=25.3.0",
+]
+[project.optional-dependencies]
+dev = [
+    "ruff",
+]
+dynamic = ["classifiers"]
+
+[project.urls]
+Homepage = "https://github.com/Develatio/encripton"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+py-modules = ["encripton"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["*"]
+
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
 exclude = [

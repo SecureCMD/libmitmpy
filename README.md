@@ -1,13 +1,23 @@
 1. Create venv and use it
 
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
+```
 
 2. Install deps
 
-pip install -r requirements.txt
+```bash
+python -m pip install --upgrade pip setuptools wheel
+pip install -e .
+```
 
-3. Run it
+3. Run some examples
 
-cd src
-python main.py
+```bash
+python examples/mitm/main.py
+```
+
+```bash
+python examples/mitm/tests/https.py
+```

@@ -54,7 +54,10 @@ class PipeManager:
                     case "pipe_finished":
                         logger.debug("Attempting to stop pipe...")
                         if not self._pending_tasks(pipe):
-                            pipe.stop()
+                            self.stop(pipe)
+
+                            self.pipes.pop(pipe)
+                            self.dead_pipes.append(pipe)
                         else:
                             logger.debug("Pipe hasn't been drained yet, rescheduling removal...")
                             self._enqueue_event(event_type, pipe)
@@ -131,19 +134,9 @@ class PipeManager:
         logger.info(f"Starting pipe {pipe}")
         pipe.start()
 
-    def stop_all(self):
-        if self._halt:
-            return
-
-        self._halt = True
-
-        for pipe in self.pipes.keys():
-            logger.info(f"Closing pipe {pipe}")
-            pipe.stop()
-
-        logger.debug("Draining all pipes...")
-        self._event_queue.join()
-        self._dispatcher.join()
+    def stop(self, pipe):
+        logger.info(f"Closing pipe {pipe}")
+        pipe.stop()
 
         logger.debug(f"Unsubscribing from events of pipe {pipe}")
         pipe.off("pipe_finished")
@@ -151,5 +144,16 @@ class PipeManager:
         pipe.off("incoming_data_available")
 
         logger.debug(f"Removing pipe {pipe} from pipe manager")
-        pipe = self.pipes.pop(pipe)
-        self.dead_pipes.append(pipe)
+
+    def stop_all(self):
+        if self._halt:
+            return
+
+        self._halt = True
+
+        for pipe in self.pipes.keys():
+            self.stop(pipe)
+
+        logger.debug("Draining all pipes...")
+        self._event_queue.join()
+        self._dispatcher.join()

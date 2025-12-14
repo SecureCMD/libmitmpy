@@ -1,10 +1,13 @@
 import ssl
+from pathlib import Path
 
 import socks
 
+my_path = Path(__file__).resolve()
+
 host = "tcpbin.com"
 port = 4243
-pem = "../certs/encripton.pem"
+pem = my_path.parents[3] / "src/certs/encripton.pem"
 # pem = "/Users/alexandernst/.mitmproxy/mitmproxy-ca.pem"
 
 proxy_host = "localhost"
