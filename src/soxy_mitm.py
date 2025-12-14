@@ -80,7 +80,11 @@ class Soxy:
         sni, alpn_list = tls.get_sni_alpn(client_socket)
         if not sni:
             logger.info(f"Creating plain text pipe for sockets [{client_socket}, {target_socket}]")
-            pipe = socks.Pipe(client_socket, target_socket)
+            metainfo = socks.PipeMetaInfo(
+                dst_addr=dst_addr,
+                dst_port=dst_port,
+            )
+            pipe = socks.Pipe(downstream=client_socket, upstream=target_socket, metainfo=metainfo)
         else:
             logger.info(f"SNI: {sni}")
             logger.info(f"ALPN: {repr(alpn_list)}")
@@ -99,7 +103,13 @@ class Soxy:
             target_conn.wrap_target(sni)
 
             logger.info(f"Creating secure pipe for sockets [{client_conn}, {target_conn}]")
-            pipe = socks.Pipe(client_conn, target_conn)
+            metainfo = socks.PipeMetaInfo(
+                dst_addr=dst_addr,
+                dst_port=dst_port,
+                sni=sni,
+                alpn_list=alpn_list,
+            )
+            pipe = socks.Pipe(downstream=client_conn, upstream=target_conn, metainfo=metainfo)
 
         self.pipemanager.add(pipe)
 

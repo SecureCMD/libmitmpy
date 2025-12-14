@@ -1,4 +1,8 @@
 from .client import Client
-from .pipe import Pipe
+from .pipe import Pipe, PipeMetaInfo
 
-__all__ = ["Client", "Pipe"]
+__all__ = [
+    "Client",
+    "Pipe",
+    "PipeMetaInfo",
+]

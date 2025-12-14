@@ -26,11 +26,8 @@ class PipeManager:
         self._event_queue: Queue[tuple[str, Pipe, dict[str, Any]]] = Queue()
         self._halt = False
 
-        self.parser = DummyParser()
-        self.transformer = DummyTransformer()
-
-        self.parser = HTTPParser()
-        self.transformer = HTTPTransformer()
+        self.parsers = [HTTPParser(), DummyParser()]
+        self.transformers = [HTTPTransformer(), DummyTransformer()]
 
         # Start event dispatcher thread
         self._dispatcher = AutoThread(target=self._dispatch_events, name="EventDispatcher")
@@ -79,7 +76,6 @@ class PipeManager:
 
                     case "outgoing_data_available":
                         with pipe.outgoing_locked():
-                            # for parse, transformer in self.parsers_and_transformers:
                             self.process_outgoing_data(pipe, **kwargs)
                             with self._pipes_lock:
                                 self.pipes[pipe]["pending_outgoing"] -= 1
@@ -160,40 +156,42 @@ class PipeManager:
         buf = pipe.get_outgoing_buffer()
 
         # Try to parse and forward as much as possible from buf
-        while True:
-            parsed, consumed = self.parser.parse(buf, eof=eof)
+        for parser, transformer in zip(self.parsers, self.transformers):
+            while True:
+                parsed, consumed = parser.parse(buf, eof=eof)
 
-            if not parsed:
-                break
+                if not parsed:
+                    break
 
-            transformed = self.transformer.transform(parsed)
+                transformed = transformer.transform(parsed)
 
-            pipe.write_to_upstream(transformed)
-            del buf[:consumed]
+                pipe.write_to_upstream(transformed)
+                del buf[:consumed]
 
-        # Fallback: pass-through any leftover bytes so target isn’t starved
-        if eof and buf:
-            logger.debug(f"{len(buf)} bytes left in the buffer, sending to target socket...")
-            pipe.write_to_upstream(buf)
-            buf.clear()
+            # Fallback: pass-through any leftover bytes so target isn’t starved
+            if eof and buf:
+                logger.debug(f"{len(buf)} bytes left in the buffer, sending to target socket...")
+                pipe.write_to_upstream(buf)
+                buf.clear()
 
     def process_incoming_data(self, pipe, eof=False):
         buf = pipe.get_incoming_buffer()
 
         # Try to parse and forward as much as possible from buf
-        while True:
-            parsed, consumed = self.parser.parse(buf, eof=eof)
+        for parser, transformer in zip(self.parsers, self.transformers):
+            while True:
+                parsed, consumed = parser.parse(buf, eof=eof)
 
-            if not parsed:
-                break
+                if not parsed:
+                    break
 
-            transformed = self.transformer.transform(parsed)
+                transformed = transformer.transform(parsed)
 
-            pipe.write_to_downstream(transformed)
-            del buf[:consumed]
+                pipe.write_to_downstream(transformed)
+                del buf[:consumed]
 
-        # Fallback: pass-through any leftover bytes so client isn’t starved
-        if eof and buf:
-            logger.debug(f"{len(buf)} bytes left in the buffer, sending to local socket...")
-            pipe.write_to_downstream(buf)
-            buf.clear()
+            # Fallback: pass-through any leftover bytes so client isn’t starved
+            if eof and buf:
+                logger.debug(f"{len(buf)} bytes left in the buffer, sending to local socket...")
+                pipe.write_to_downstream(buf)
+                buf.clear()

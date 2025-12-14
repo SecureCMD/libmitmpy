@@ -2,7 +2,9 @@ import logging
 import socket
 import ssl
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from threading import Lock
+from typing import Optional, Tuple
 
 from core import SafeConnection, SafeSocket, Thread
 from mixins import EventMixin
@@ -11,12 +13,20 @@ BUFSIZE = 2048
 
 logger = logging.getLogger(__name__)
 
+@dataclass(frozen=True)
+class PipeMetaInfo:
+    dst_addr: bytes
+    dst_port: int
+    sni: Optional[str] = None
+    alpn_list: Optional[Tuple[str]] = field(default_factory=tuple)
+
 
 class Pipe(EventMixin):
     def __init__(
         self,
         downstream: SafeSocket | SafeConnection,
         upstream: SafeSocket | SafeConnection,
+        metainfo: PipeMetaInfo,
     ):
         super().__init__()
 
@@ -24,6 +34,7 @@ class Pipe(EventMixin):
 
         self._downstream = downstream
         self._upstream = upstream
+        self.metainfo = metainfo
 
         self._outgoing_buffer = bytearray()
         self._incoming_buffer = bytearray()
@@ -32,6 +43,7 @@ class Pipe(EventMixin):
         self._incoming_lock = Lock()
 
         logger.info(f"Created pipe {self} for sockets [{downstream}, {upstream}]")
+        logger.info(self.metainfo)
 
     def __del__(self):
         logger.debug(f"Closing up/downstream sockets of pipe {self}")
