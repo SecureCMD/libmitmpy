@@ -22,6 +22,7 @@ class PipeManager:
                 "pending_incoming": 0,
             }
         )
+        self.dead_pipes: list[Pipe] = []
         self._pipes_lock = Lock()
         self._event_queue: Queue[tuple[str, Pipe, dict[str, Any]]] = Queue()
         self._halt = False
@@ -51,9 +52,9 @@ class PipeManager:
 
                 match event_type:
                     case "pipe_finished":
-                        logger.debug("Attempting to remove pipe...")
+                        logger.debug("Attempting to kill pipe...")
                         if not self._pending_tasks(pipe):
-                            self.remove(pipe)
+                            self.kill(pipe)
                         else:
                             logger.debug("Pipe hasn't been drained yet, rescheduling removal...")
                             self._enqueue_event(event_type, pipe)
@@ -140,7 +141,7 @@ class PipeManager:
         self._event_queue.join()
         self._dispatcher.join()
 
-    def remove(self, pipe):
+    def kill(self, pipe):
         logger.info(f"Stopping pipe {pipe}")
         pipe.stop()
 
@@ -150,7 +151,8 @@ class PipeManager:
         pipe.off("incoming_data_available")
 
         logger.debug(f"Removing pipe {pipe} from pipe manager")
-        self.pipes.pop(pipe)
+        pipe = self.pipes.pop(pipe)
+        self.dead_pipes.append(pipe)
 
     def process_outgoing_data(self, pipe, eof=False):
         buf = pipe.get_outgoing_buffer()
