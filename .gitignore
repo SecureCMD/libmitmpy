@@ -4,3 +4,4 @@ encripton.pem
 *.pyc
 __pycache__
 certs/
+encripton.egg-info
