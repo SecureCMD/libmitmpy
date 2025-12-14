@@ -52,9 +52,9 @@ class PipeManager:
 
                 match event_type:
                     case "pipe_finished":
-                        logger.debug("Attempting to kill pipe...")
+                        logger.debug("Attempting to stopping pipe...")
                         if not self._pending_tasks(pipe):
-                            self.kill(pipe)
+                            pipe.stop()
                         else:
                             logger.debug("Pipe hasn't been drained yet, rescheduling removal...")
                             self._enqueue_event(event_type, pipe)
@@ -134,16 +134,12 @@ class PipeManager:
         self._halt = True
 
         for pipe in self.pipes.keys():
-            logger.info(f"Stopping pipe {pipe}")
+            logger.info(f"Closing pipe {pipe}")
             pipe.stop()
 
         logger.debug("Draining all pipes...")
         self._event_queue.join()
         self._dispatcher.join()
-
-    def kill(self, pipe):
-        logger.info(f"Stopping pipe {pipe}")
-        pipe.stop()
 
         logger.debug(f"Unsubscribing from events of pipe {pipe}")
         pipe.off("pipe_finished")
@@ -159,13 +155,19 @@ class PipeManager:
 
         # Try to parse and forward as much as possible from buf
         for parser, transformer in zip(self.parsers, self.transformers):
+            logger.debug(
+                f"Attempting to parse / transform with {type(parser).__name__} and {type(transformer).__name__}"
+            )
             while True:
                 parsed, consumed = parser.parse(buf, eof=eof)
+                logger.debug(f"Consumed {consumed} bytes after parsing {len(buf)} of outgoing data")
 
                 if not parsed:
+                    logger.debug("Breaking...")
                     break
 
                 transformed = transformer.transform(parsed)
+                logger.debug(f"Left with {len(transformed)} bytes after transforming...")
 
                 pipe.write_to_upstream(transformed)
                 del buf[:consumed]
@@ -181,13 +183,19 @@ class PipeManager:
 
         # Try to parse and forward as much as possible from buf
         for parser, transformer in zip(self.parsers, self.transformers):
+            logger.debug(
+                f"Attempting to parse / transform with {type(parser).__name__} and {type(transformer).__name__}"
+            )
             while True:
                 parsed, consumed = parser.parse(buf, eof=eof)
+                logger.debug(f"Consumed {consumed} bytes after parsing {len(buf)} of incoming data")
 
                 if not parsed:
+                    logger.debug("Breaking...")
                     break
 
                 transformed = transformer.transform(parsed)
+                logger.debug(f"Left with {len(transformed)} bytes after transforming...")
 
                 pipe.write_to_downstream(transformed)
                 del buf[:consumed]

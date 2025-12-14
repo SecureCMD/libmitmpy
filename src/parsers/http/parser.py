@@ -121,15 +121,16 @@ class HTTPParser:
                 return msg, body_start
 
         # For requests, assume no body if neither CL nor chunked
-        if not is_response and get_content_length() is None and not has_chunked():
-            msg = HTTPMessage(
-                start_line=start_line,
-                headers=headers,
-                body=b"",
-                is_response=False,
-                was_chunked=False,
-            )
-            return msg, body_start
+        if not is_response:  # and get_content_length() is None and not has_chunked():
+            return None, 0
+            # msg = HTTPMessage(
+            #    start_line=start_line,
+            #    headers=headers,
+            #    body=b"",
+            #    is_response=False,
+            #    was_chunked=False,
+            # )
+            # return msg, body_start
 
         body = db[body_start:]
 
