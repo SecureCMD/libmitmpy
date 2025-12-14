@@ -30,14 +30,8 @@ logger.addHandler(handler)
 LOCAL_ADDR = "0.0.0.0"
 LOCAL_PORT = 9090
 
-
-def exit_handler(signum, frame):
-    logger.debug(f"exit_handler called with {signum=}")
-    encripton.stop()
-
-
-signal(SIGINT, exit_handler)
-signal(SIGTERM, exit_handler)
+signal(SIGINT, lambda *args, **kwargs: encripton.stop())
+signal(SIGTERM, lambda *args, **kwargs: encripton.stop())
 
 encripton = Encripton(local_addr=LOCAL_ADDR, local_port=LOCAL_PORT)
 encripton.start()
