@@ -21,7 +21,11 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "ruff",
+    "pytest",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["examples/mitm/tests"]
 dynamic = ["classifiers"]
 
 [project.urls]
