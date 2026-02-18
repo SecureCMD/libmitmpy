@@ -94,10 +94,11 @@ class Encripton:
             # TODO: check if domain matches sni
 
             cert_pem, key_pem = self.certmanager.get_or_generate_cert(sni)
+            ca_cert_pem = self.certmanager.get_root_cert_pem()
 
             # wrap client socket with fake cert
             client_conn = SafeConnection(client_socket)
-            client_conn.wrap_local(cert_pem=cert_pem, key_pem=key_pem)
+            client_conn.wrap_local(cert_pem=cert_pem, key_pem=key_pem, ca_cert_pem=ca_cert_pem)
 
             # wrap server socket with default client-side SSL
             target_conn = SafeConnection(target_socket)

@@ -54,13 +54,18 @@ class SafeConnection:
                 return b""  # treat as closed connection
             raise
 
-    def wrap_local(self, cert_pem, key_pem):
+    def wrap_local(self, cert_pem, key_pem, ca_cert_pem=None):
         x509_obj = crypto.load_certificate(crypto.FILETYPE_PEM, cert_pem)
         pkey_obj = crypto.load_privatekey(crypto.FILETYPE_PEM, key_pem)
 
         ctx = SSL.Context(SSL.TLS_SERVER_METHOD)
         ctx.use_certificate(x509_obj)
         ctx.use_privatekey(pkey_obj)
+        if ca_cert_pem:
+            # Include the CA cert in the TLS Certificate message so clients
+            # that don't have it in their local trust store can build the chain.
+            ca_x509 = crypto.load_certificate(crypto.FILETYPE_PEM, ca_cert_pem)
+            ctx.add_extra_chain_cert(ca_x509)
 
         self._conn = SSL.Connection(ctx, self._socket._socket)
         self._conn.set_accept_state()

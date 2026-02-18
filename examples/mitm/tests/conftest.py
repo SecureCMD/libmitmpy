@@ -11,4 +11,4 @@ def proxy():
 @pytest.fixture
 def ca_cert():
     # examples/mitm/tests/ -> examples/mitm/ -> examples/ -> encriptón/
-    return Path(__file__).resolve().parents[3] / "src/certs/encripton.pem"
+    return Path(__file__).resolve().parents[3] / "certs/encripton.pem"

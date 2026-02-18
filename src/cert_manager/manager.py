@@ -73,6 +73,17 @@ class CertManager:
             # Invalid file or corrupt cert
             return False
 
+    def get_root_cert_pem(self) -> bytes:
+        with open(self.cert_cache_dir / self.root_cert, "rb") as f:
+            return f.read()
+
+    def _clear_leaf_cert_cache(self):
+        """Remove all cached leaf certs so they get re-signed by the new root CA."""
+        for path in self.cert_cache_dir.glob("*.crt.pem"):
+            path.unlink(missing_ok=True)
+        for path in self.cert_cache_dir.glob("*.key.pem"):
+            path.unlink(missing_ok=True)
+
     def create_root_cert(self) -> Tuple[bytes, bytes]:
         logger.info("Creating root certificate")
         # Generate private key
@@ -129,6 +140,9 @@ class CertManager:
 
         with open(self.cert_cache_dir / self.root_key, "wb") as f:
             f.write(key_pem)
+
+        # Leaf certs signed by the old CA are now invalid — purge them.
+        self._clear_leaf_cert_cache()
 
         return cert_pem, key_pem
 
