@@ -1,6 +1,7 @@
 import logging
 import os
 import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Tuple
@@ -31,6 +32,32 @@ class CertManager:
     def is_root_cert_valid(self) -> bool:
         return self._is_cert_valid(cert_name=ROOT_CERT)
 
+    def is_root_cert_trusted(self) -> bool:
+        cert_path = self.cert_cache_dir / self.root_cert
+        try:
+            with open(cert_path, "rb") as f:
+                cert = x509.load_pem_x509_certificate(f.read())
+            fingerprint = cert.fingerprint(hashes.SHA1()).hex().upper()
+            if sys.platform == "darwin":
+                return self._is_trusted_macos(fingerprint)
+            return False
+        except Exception:
+            return False
+
+    def _is_trusted_macos(self, fingerprint: str) -> bool:
+        result = subprocess.run(
+            ["security", "find-certificate", "-a", "-Z", "/Library/Keychains/System.keychain"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return False
+        # Output lines look like: "SHA-1 hash: AB CD EF ..."
+        # Strip all whitespace so we can do a plain substring match.
+        normalized = result.stdout.replace(" ", "").upper()
+        return fingerprint in normalized
+
     def is_cert_valid(self, domain: str) -> bool:
         cert_name = CERT.format(domain=domain)
         return self._is_cert_valid(cert_name=cert_name)
@@ -47,6 +74,7 @@ class CertManager:
             return False
 
     def create_root_cert(self) -> Tuple[bytes, bytes]:
+        logger.info("Creating root certificate")
         # Generate private key
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
@@ -74,7 +102,7 @@ class CertManager:
                     key_cert_sign=True,
                     crl_sign=True,
                     key_encipherment=False,
-                    # data_encipherment=False,
+                    data_encipherment=False,
                     key_agreement=False,
                     encipher_only=False,
                     decipher_only=False,
@@ -102,20 +130,24 @@ class CertManager:
         with open(self.cert_cache_dir / self.root_key, "wb") as f:
             f.write(key_pem)
 
-        # TODO: delete previous versions
-        subprocess.run(
-            [
-                "sudo",
-                "security",
-                "add-trusted-cert",
-                "-d",
-                "-rtrustRoot",
-                "-k/Library/Keychains/System.keychain",
-                (self.cert_cache_dir / self.root_cert).resolve(),
-            ]
-        )
-
         return cert_pem, key_pem
+
+    def install_root_cert(self):
+        logger.info("Installing root cert")
+
+        if sys.platform == "darwin":
+            # TODO: delete previous versions
+            subprocess.run(
+                [
+                    "sudo",
+                    "security",
+                    "add-trusted-cert",
+                    "-d",
+                    "-rtrustRoot",
+                    "-k/Library/Keychains/System.keychain",
+                    (self.cert_cache_dir / self.root_cert).resolve(),
+                ]
+            )
 
     def get_or_generate_cert(self, domain) -> Tuple[str, str]:
         cert_path = self.cert_cache_dir / CERT.format(domain=domain)
@@ -189,7 +221,7 @@ class CertManager:
                     digital_signature=True,
                     content_commitment=False,
                     key_encipherment=True,
-                    # data_encipherment=True,
+                    data_encipherment=False,
                     key_agreement=False,
                     key_cert_sign=False,
                     crl_sign=False,

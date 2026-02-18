@@ -22,8 +22,9 @@ class Encripton:
 
         # Configure root certs
         self.certmanager = CertManager()
-        if not self.certmanager.is_root_cert_valid():
+        if not self.certmanager.is_root_cert_valid() or not self.certmanager.is_root_cert_trusted():
             self.certmanager.create_root_cert()
+            self.certmanager.install_root_cert()
 
         # Creat the main socket
         self.main_socket = SafeSocket.create()
