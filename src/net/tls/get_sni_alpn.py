@@ -38,7 +38,7 @@ def get_sni_alpn(sock: SafeSocket) -> Tuple[str, Tuple[str]]:
     pos = 0
 
     # --- Step 3: Handshake type (ClientHello) ---
-    if data[pos:1] != TLS_HANDSHAKE_TYPE_CLIENT_HELLO:
+    if data[pos:pos+1] != TLS_HANDSHAKE_TYPE_CLIENT_HELLO:
         return None, []
     pos += 1
 

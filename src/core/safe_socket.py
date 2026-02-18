@@ -93,13 +93,16 @@ class SafeSocket:
     def peekall(self, n: int) -> bytes:
         # Note: this blocks until some data is available, or EOF.
         # If you need a bound, temporarily set a timeout around this call.
-        buf = bytearray()
-        while len(buf) < n:
-            chunk = self._socket.recv(n - len(buf), socket.MSG_PEEK)
+        # MSG_PEEK always returns data from the start of the socket buffer,
+        # so we must always request the full n bytes and loop until we get them.
+        while True:
+            chunk = self._socket.recv(n, socket.MSG_PEEK)
             if not chunk:
-                raise ConnectionResetError(f"Received less bytes than expected ({len(buf)}/{n}).")
-            buf.extend(chunk)
-        return bytes(buf)
+                raise ConnectionResetError(f"Received less bytes than expected (0/{n}).")
+            if len(chunk) >= n:
+                return bytes(chunk[:n])
+            # Kernel returned fewer bytes than requested; data is still arriving.
+            # Loop and peek again until the full n bytes are available.
 
     # proxy to the real socket for everything else
     def __getattr__(self, name):
