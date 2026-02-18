@@ -26,7 +26,6 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["examples/mitm/tests"]
-dynamic = ["classifiers"]
 
 [project.urls]
 Homepage = "https://github.com/Develatio/encripton"
