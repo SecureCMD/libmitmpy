@@ -12,27 +12,32 @@ class SafeConnection:
     def __init__(self, socket):
         self._socket = socket
         self._conn = None
+        self._shutdown = False
         self._closed = False
 
     def __str__(self):
         return f"{hex(id(self))}"
 
     def shutdown(self, *args, **kwargs):
-        if not self._closed:
+        if not self._shutdown and not self._closed:
             try:
                 self._socket.shutdown(*args, **kwargs)
             except OSError:
                 pass
-            self._closed = True
+            self._shutdown = True
 
     def close(self):
         if not self._closed:
+            self._closed = True
+            if not self._shutdown:
+                try:
+                    self._socket.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
             try:
-                self.shutdown(socket.SHUT_RDWR)
                 self._conn.close()
             except OSError:
                 pass
-            self._closed = True
 
     def sendall(self, data: bytes, flags: int = 0):
         if flags:
@@ -49,6 +54,8 @@ class SafeConnection:
     def recv(self, bufsize: int, flags: int = 0) -> bytes:
         try:
             return self._conn.recv(bufsize, flags)
+        except SSL.ZeroReturnError:
+            return b""  # clean TLS shutdown (close_notify received)
         except SSL.SysCallError as e:
             if e.args == (-1, "Unexpected EOF"):
                 return b""  # treat as closed connection

@@ -35,7 +35,7 @@ class Client:
             if ver != VER or nmethods == 0:
                 self.socket.sendall(ver + M_NOTAVAILABLE)
                 self.socket.close()
-                return
+                return False
             else:
                 methods = self.socket.recvall(nmethods)
                 if M_NOAUTH not in methods:
@@ -86,9 +86,9 @@ class Client:
             dst_addr = target[0:-2]
             dst_port = unpack(">H", target[-2:])[0]
         elif atyp == ATYP_IPV6:
-            target = self.socket.recvall(16)
-            dst_addr = socket.inet_ntop(target[:-2])
-            dst_port = unpack(">H", target[-2:])[0]
+            target = self.socket.recvall(18)
+            dst_addr = socket.inet_ntop(socket.AF_INET6, target[:16])
+            dst_port = unpack(">H", target[16:])[0]
         else:
             return b"", 0
 
@@ -109,7 +109,7 @@ class Client:
         try:
             socket_dst.connect((dst_addr, dst_port))
         except socket.error as err:
-            self.error("Failed to connect to DST", err)
+            logger.error("Failed to connect to DST: %s", err)
             return None
 
         if not socket_dst:

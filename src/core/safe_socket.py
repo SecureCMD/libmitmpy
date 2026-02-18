@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 class SafeSocket:
     def __init__(self, socket: socket.socket | ssl.SSLSocket):
         self._socket = socket
+        self._shutdown = False
         self._closed = False
 
     def __str__(self):
@@ -31,21 +32,25 @@ class SafeSocket:
         return _socket
 
     def shutdown(self, *args, **kwargs):
-        if not self._closed:
+        if not self._shutdown and not self._closed:
             try:
                 self._socket.shutdown(*args, **kwargs)
             except OSError:
                 pass
-            self._closed = True
+            self._shutdown = True
 
     def close(self):
         if not self._closed:
-            self.shutdown(socket.SHUT_RDWR)
+            self._closed = True
+            if not self._shutdown:
+                try:
+                    self._socket.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
             try:
                 self._socket.close()
             except OSError:
                 pass
-            self._closed = True
 
     def accept(self, *args, **kwargs) -> Tuple[SafeSocket, Tuple[bytes, int]]:
         conn_socket, addr = self._socket.accept(*args, **kwargs)

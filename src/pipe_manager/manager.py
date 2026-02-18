@@ -20,7 +20,6 @@ class PipeManager:
                 "pending_incoming": 0,
             }
         )
-        self.dead_pipes: list[Pipe] = []
         self._pipes_lock = Lock()
         self._event_queue: Queue[tuple[str, Pipe, dict[str, Any]]] = Queue()
         self._halt = False
@@ -55,9 +54,7 @@ class PipeManager:
                         logger.debug("Attempting to stop pipe...")
                         if not self._pending_tasks(pipe):
                             self.stop(pipe)
-
                             self.pipes.pop(pipe)
-                            self.dead_pipes.append(pipe)
                         else:
                             logger.debug("Pipe hasn't been drained yet, rescheduling removal...")
                             self._enqueue_event(event_type, pipe)
@@ -105,6 +102,14 @@ class PipeManager:
                 if not isinstance(e, TimeoutError):
                     logger.exception("Error dispatching event")
 
+        # Drain remaining items so stop_all()'s queue.join() doesn't deadlock.
+        while True:
+            try:
+                self._event_queue.get_nowait()
+                self._event_queue.task_done()
+            except Empty:
+                break
+
     def _enqueue_event(self, event_type: str, pipe: Pipe, **kwargs):
         logger.debug(f"Enqueuing {event_type} for pipe {pipe}")
 
@@ -151,7 +156,7 @@ class PipeManager:
 
         self._halt = True
 
-        for pipe in self.pipes.keys():
+        for pipe in list(self.pipes.keys()):
             self.stop(pipe)
 
         logger.debug("Draining all pipes...")
