@@ -13,7 +13,7 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 logger = logging.getLogger(__name__)
 
-CERTS_PATH = "certs"
+CERTS_PATH = Path(__file__).resolve().parent.parent.parent / "certs"
 ROOT_CERT = "encripton.pem"
 ROOT_KEY = "encripton.key"
 
@@ -23,7 +23,7 @@ KEY = "{domain}.key.pem"
 
 class CertManager:
     def __init__(self):
-        self.cert_cache_dir = Path(CERTS_PATH)
+        self.cert_cache_dir = CERTS_PATH
         self.root_cert = ROOT_CERT
         self.root_key = ROOT_KEY
 

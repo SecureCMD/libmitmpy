@@ -1,6 +1,5 @@
 import logging
 from collections import defaultdict
-from contextlib import suppress
 from queue import Empty, Queue
 from threading import Lock
 from typing import Any
@@ -78,16 +77,20 @@ class PipeManager:
                     case "outgoing_data_available":
                         with pipe.outgoing_locked():
                             for interceptor in self.interceptors:
-                                with suppress(Exception):
+                                try:
                                     interceptor.process_outgoing_data(pipe, **kwargs)
+                                except Exception:
+                                    logger.exception("Interceptor %s crashed on outgoing data", type(interceptor).__name__)
                             with self._pipes_lock:
                                 self.pipes[pipe]["pending_outgoing"] -= 1
 
                     case "incoming_data_available":
                         with pipe.incoming_locked():
                             for interceptor in self.interceptors:
-                                with suppress(Exception):
+                                try:
                                     interceptor.process_incoming_data(pipe, **kwargs)
+                                except Exception:
+                                    logger.exception("Interceptor %s crashed on incoming data", type(interceptor).__name__)
                             with self._pipes_lock:
                                 self.pipes[pipe]["pending_incoming"] -= 1
                     case _:
