@@ -3,6 +3,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
@@ -16,55 +17,55 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 logger = logging.getLogger(__name__)
 
 CERTS_PATH = Path(__file__).resolve().parent.parent.parent / "certs"
-ROOT_CERT = "encripton.pem"
-ROOT_KEY = "encripton.key"
 
 
 class CertManager:
     def __init__(self):
         self.cert_cache_dir = CERTS_PATH
-        self.root_cert = ROOT_CERT
-        self.root_key = ROOT_KEY
 
         self._domain_locks: dict[str, Lock] = {}
         self._domain_locks_lock = Lock()
 
         os.makedirs(self.cert_cache_dir, exist_ok=True)
 
-        # Clean up legacy per-domain cert files from the old file-based approach.
-        for path in self.cert_cache_dir.glob("*.crt.pem"):
-            path.unlink(missing_ok=True)
-        for path in self.cert_cache_dir.glob("*.key.pem"):
-            path.unlink(missing_ok=True)
-
         self._db = sqlite3.connect(
             str(self.cert_cache_dir / "certs.db"),
             check_same_thread=False,
         )
-        self._db.execute("""
-            CREATE TABLE IF NOT EXISTS leaf_certs (
-                domain TEXT PRIMARY KEY,
+        self._db.executescript("""
+            CREATE TABLE IF NOT EXISTS root_cert (
+                id  INTEGER PRIMARY KEY CHECK (id = 1),
                 cert_pem BLOB NOT NULL,
-                key_pem BLOB NOT NULL,
+                key_pem  BLOB NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS leaf_certs (
+                domain   TEXT PRIMARY KEY,
+                cert_pem BLOB NOT NULL,
+                key_pem  BLOB NOT NULL,
                 expires_at REAL NOT NULL
-            )
+            );
         """)
-        self._db.commit()
+
+    def _root_row(self):
+        return self._db.execute("SELECT cert_pem, key_pem FROM root_cert WHERE id = 1").fetchone()
 
     def is_root_cert_valid(self) -> bool:
         try:
-            with open(self.cert_cache_dir / self.root_cert, "rb") as f:
-                cert = x509.load_pem_x509_certificate(f.read())
+            row = self._root_row()
+            if row is None:
+                return False
+            cert = x509.load_pem_x509_certificate(bytes(row[0]))
             now = datetime.now(timezone.utc)
             return cert.not_valid_before_utc <= now <= cert.not_valid_after_utc
         except Exception:
             return False
 
     def is_root_cert_trusted(self) -> bool:
-        cert_path = self.cert_cache_dir / self.root_cert
         try:
-            with open(cert_path, "rb") as f:
-                cert = x509.load_pem_x509_certificate(f.read())
+            row = self._root_row()
+            if row is None:
+                return False
+            cert = x509.load_pem_x509_certificate(bytes(row[0]))
             fingerprint = cert.fingerprint(hashes.SHA1()).hex().upper()
             if sys.platform == "darwin":
                 return self._is_trusted_macos(fingerprint)
@@ -95,8 +96,8 @@ class CertManager:
         return row is not None and now <= row[0]
 
     def get_root_cert_pem(self) -> bytes:
-        with open(self.cert_cache_dir / self.root_cert, "rb") as f:
-            return f.read()
+        row = self._root_row()
+        return bytes(row[0])
 
     def _clear_leaf_cert_cache(self):
         """Remove all cached leaf certs so they get re-signed by the new root CA."""
@@ -154,11 +155,11 @@ class CertManager:
             encryption_algorithm=serialization.NoEncryption(),
         )
 
-        with open(self.cert_cache_dir / self.root_cert, "wb") as f:
-            f.write(cert_pem)
-
-        with open(self.cert_cache_dir / self.root_key, "wb") as f:
-            f.write(key_pem)
+        self._db.execute(
+            "INSERT OR REPLACE INTO root_cert (id, cert_pem, key_pem) VALUES (1, ?, ?)",
+            (cert_pem, key_pem),
+        )
+        self._db.commit()
 
         # Leaf certs signed by the old CA are now invalid — purge them.
         self._clear_leaf_cert_cache()
@@ -169,18 +170,25 @@ class CertManager:
         logger.info("Installing root cert")
 
         if sys.platform == "darwin":
-            # TODO: delete previous versions
-            subprocess.run(
-                [
-                    "sudo",
-                    "security",
-                    "add-trusted-cert",
-                    "-d",
-                    "-rtrustRoot",
-                    "-k/Library/Keychains/System.keychain",
-                    (self.cert_cache_dir / self.root_cert).resolve(),
-                ]
-            )
+            cert_pem = self.get_root_cert_pem()
+            fd, tmp_path = tempfile.mkstemp(suffix=".pem")
+            try:
+                os.write(fd, cert_pem)
+                os.close(fd)
+                # TODO: delete previous versions
+                subprocess.run(
+                    [
+                        "sudo",
+                        "security",
+                        "add-trusted-cert",
+                        "-d",
+                        "-rtrustRoot",
+                        "-k/Library/Keychains/System.keychain",
+                        tmp_path,
+                    ]
+                )
+            finally:
+                os.unlink(tmp_path)
 
     def _get_domain_lock(self, domain: str) -> Lock:
         with self._domain_locks_lock:
@@ -208,12 +216,10 @@ class CertManager:
             return bytes(row[0]), bytes(row[1])
 
     def generate_signed_cert(self, domain: str) -> Tuple[bytes, bytes]:
-        # Load cert and CA key
-        with open(self.cert_cache_dir / self.root_cert, "rb") as f:
-            ca_cert = x509.load_pem_x509_certificate(f.read())
-
-        with open(self.cert_cache_dir / self.root_key, "rb") as f:
-            ca_key = serialization.load_pem_private_key(f.read(), password=None)
+        # Load CA cert and key from DB
+        row = self._root_row()
+        ca_cert = x509.load_pem_x509_certificate(bytes(row[0]))
+        ca_key = serialization.load_pem_private_key(bytes(row[1]), password=None)
 
         # Generate new key for the fake cert
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
