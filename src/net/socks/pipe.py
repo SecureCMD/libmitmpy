@@ -99,6 +99,8 @@ class Pipe(EventMixin):
         except (OSError, ssl.SSLError):
             logger.error("Something failed, killing pipe...")
             self.emit("outgoing_data_available", self, eof=True)
+            self._halt = True
+            self._upstream.shutdown(socket.SHUT_RD)
 
     def _read_from_upstream(self):
         try:
@@ -120,6 +122,8 @@ class Pipe(EventMixin):
         except (OSError, ssl.SSLError):
             logger.error("Something failed, killing pipe...")
             self.emit("incoming_data_available", self, eof=True)
+            self._halt = True
+            self._downstream.shutdown(socket.SHUT_RD)
 
     def get_incoming_buffer(self) -> bytearray:
         return self._incoming_buffer
