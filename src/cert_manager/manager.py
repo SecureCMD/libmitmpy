@@ -123,7 +123,9 @@ class CertManager:
     def _is_trusted_windows(self, fingerprint: str) -> bool:
         result = subprocess.run(
             [
-                "powershell", "-NoProfile", "-Command",
+                "powershell",
+                "-NoProfile",
+                "-Command",
                 f"(Get-ChildItem Cert:\\LocalMachine\\Root | Where-Object {{$_.Thumbprint -eq '{fingerprint}'}}).Count",
             ],
             capture_output=True,
