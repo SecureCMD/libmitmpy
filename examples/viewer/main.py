@@ -141,6 +141,7 @@ class TrafficScreen(Screen):
         table.add_columns("Time", "Dir", "Size")
         self._update_mode_label()
         self._load_chunks()
+        self.set_interval(2.0, self._poll_new_chunks)
 
     # ------------------------------------------------------------------
 
@@ -177,6 +178,31 @@ class TrafficScreen(Screen):
 
         if self._chunk_ids:
             self._show_chunk(self._chunk_ids[0])
+
+    def _poll_new_chunks(self) -> None:
+        """Append any traffic rows added since the last load without disturbing the view."""
+        if not self._chunk_ids:
+            return
+        rows = _query(
+            "SELECT id, direction, recorded_at, length(data) "
+            "FROM traffic WHERE pipe_id = ? AND id > ? ORDER BY recorded_at ASC",
+            (self._pipe_id, self._chunk_ids[-1]),
+        )
+        if not rows:
+            return
+        table = self.query_one("#traffic-table", DataTable)
+        was_at_last = table.cursor_row == len(self._chunk_ids) - 1
+        for chunk_id, direction, recorded_at, size in rows:
+            self._chunk_ids.append(chunk_id)
+            ts    = datetime.fromtimestamp(recorded_at).strftime("%H:%M:%S.%f")[:-3]
+            arrow = (
+                Text("↑ out", style="cyan")
+                if direction == "outgoing"
+                else Text("↓ in ", style="yellow")
+            )
+            table.add_row(ts, arrow, f"{size} B")
+        if was_at_last:
+            table.move_cursor(row=len(self._chunk_ids) - 1)
 
     def _show_chunk(self, chunk_id: int) -> None:
         rows = _query("SELECT data FROM traffic WHERE id = ?", (chunk_id,))
@@ -230,6 +256,7 @@ class PipesScreen(Screen):
         table = self.query_one("#pipes-table", DataTable)
         table.add_columns("Time", "Address", "Port", "Enc", "SNI", "ALPN", "Chunks")
         self._load_pipes()
+        self.set_interval(2.0, self._load_pipes)
 
     # ------------------------------------------------------------------
 
