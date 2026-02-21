@@ -1,5 +1,6 @@
 import logging
 import os
+import sqlite3
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -18,9 +19,6 @@ CERTS_PATH = Path(__file__).resolve().parent.parent.parent / "certs"
 ROOT_CERT = "encripton.pem"
 ROOT_KEY = "encripton.key"
 
-CERT = "{domain}.crt.pem"
-KEY = "{domain}.key.pem"
-
 
 class CertManager:
     def __init__(self):
@@ -33,8 +31,34 @@ class CertManager:
 
         os.makedirs(self.cert_cache_dir, exist_ok=True)
 
+        # Clean up legacy per-domain cert files from the old file-based approach.
+        for path in self.cert_cache_dir.glob("*.crt.pem"):
+            path.unlink(missing_ok=True)
+        for path in self.cert_cache_dir.glob("*.key.pem"):
+            path.unlink(missing_ok=True)
+
+        self._db = sqlite3.connect(
+            str(self.cert_cache_dir / "certs.db"),
+            check_same_thread=False,
+        )
+        self._db.execute("""
+            CREATE TABLE IF NOT EXISTS leaf_certs (
+                domain TEXT PRIMARY KEY,
+                cert_pem BLOB NOT NULL,
+                key_pem BLOB NOT NULL,
+                expires_at REAL NOT NULL
+            )
+        """)
+        self._db.commit()
+
     def is_root_cert_valid(self) -> bool:
-        return self._is_cert_valid(cert_name=ROOT_CERT)
+        try:
+            with open(self.cert_cache_dir / self.root_cert, "rb") as f:
+                cert = x509.load_pem_x509_certificate(f.read())
+            now = datetime.now(timezone.utc)
+            return cert.not_valid_before_utc <= now <= cert.not_valid_after_utc
+        except Exception:
+            return False
 
     def is_root_cert_trusted(self) -> bool:
         cert_path = self.cert_cache_dir / self.root_cert
@@ -63,19 +87,12 @@ class CertManager:
         return fingerprint in normalized
 
     def is_cert_valid(self, domain: str) -> bool:
-        cert_name = CERT.format(domain=domain)
-        return self._is_cert_valid(cert_name=cert_name)
-
-    def _is_cert_valid(self, cert_name) -> bool:
-        try:
-            with open(self.cert_cache_dir / cert_name, "rb") as f:
-                cert = x509.load_pem_x509_certificate(f.read())
-
-            now = datetime.now(timezone.utc)
-            return cert.not_valid_before_utc <= now <= cert.not_valid_after_utc
-        except Exception:
-            # Invalid file or corrupt cert
-            return False
+        now = datetime.now(timezone.utc).timestamp()
+        row = self._db.execute(
+            "SELECT expires_at FROM leaf_certs WHERE domain = ?",
+            (domain,),
+        ).fetchone()
+        return row is not None and now <= row[0]
 
     def get_root_cert_pem(self) -> bytes:
         with open(self.cert_cache_dir / self.root_cert, "rb") as f:
@@ -83,10 +100,8 @@ class CertManager:
 
     def _clear_leaf_cert_cache(self):
         """Remove all cached leaf certs so they get re-signed by the new root CA."""
-        for path in self.cert_cache_dir.glob("*.crt.pem"):
-            path.unlink(missing_ok=True)
-        for path in self.cert_cache_dir.glob("*.key.pem"):
-            path.unlink(missing_ok=True)
+        self._db.execute("DELETE FROM leaf_certs")
+        self._db.commit()
 
     def create_root_cert(self) -> Tuple[bytes, bytes]:
         logger.info("Creating root certificate")
@@ -173,38 +188,26 @@ class CertManager:
                 self._domain_locks[domain] = Lock()
             return self._domain_locks[domain]
 
-    def get_or_generate_cert(self, domain) -> Tuple[str, str]:
+    def get_or_generate_cert(self, domain: str) -> Tuple[bytes, bytes]:
         with self._get_domain_lock(domain):
-            cert_path = self.cert_cache_dir / CERT.format(domain=domain)
-            key_path = self.cert_cache_dir / KEY.format(domain=domain)
-
-            if not os.path.exists(cert_path) or not os.path.exists(key_path) or not self.is_cert_valid(domain):
+            if not self.is_cert_valid(domain):
                 logger.info(f"Generating spoofed cert for {domain}")
                 cert_pem, key_pem = self.generate_signed_cert(domain)
-
-                with open(cert_path, "wb") as f:
-                    f.write(cert_pem)
-
-                with open(key_path, "wb") as f:
-                    f.write(key_pem)
-
+                expires_at = (datetime.now(timezone.utc) + timedelta(days=30)).timestamp()
+                self._db.execute(
+                    "INSERT OR REPLACE INTO leaf_certs (domain, cert_pem, key_pem, expires_at) VALUES (?, ?, ?, ?)",
+                    (domain, cert_pem, key_pem, expires_at),
+                )
+                self._db.commit()
                 return cert_pem, key_pem
 
-            with open(cert_path, "rb") as f:
-                cert = x509.load_pem_x509_certificate(f.read())
-                cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+            row = self._db.execute(
+                "SELECT cert_pem, key_pem FROM leaf_certs WHERE domain = ?",
+                (domain,),
+            ).fetchone()
+            return bytes(row[0]), bytes(row[1])
 
-            with open(key_path, "rb") as f:
-                key = serialization.load_pem_private_key(f.read(), password=None)
-                key_pem = key.private_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PrivateFormat.TraditionalOpenSSL,
-                    encryption_algorithm=serialization.NoEncryption(),
-                )
-
-            return cert_pem, key_pem
-
-    def generate_signed_cert(self, domain) -> Tuple[bytes, bytes]:
+    def generate_signed_cert(self, domain: str) -> Tuple[bytes, bytes]:
         # Load cert and CA key
         with open(self.cert_cache_dir / self.root_cert, "rb") as f:
             ca_cert = x509.load_pem_x509_certificate(f.read())
