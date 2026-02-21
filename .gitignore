@@ -5,3 +5,4 @@ encripton.pem
 __pycache__
 certs/
 encripton.egg-info
+examples/*/data
