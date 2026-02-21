@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -73,6 +74,10 @@ class CertManager:
             fingerprint = cert.fingerprint(hashes.SHA1()).hex().upper()
             if sys.platform == "darwin":
                 return self._is_trusted_macos(fingerprint)
+            if sys.platform == "linux":
+                return self._is_trusted_linux(fingerprint)
+            if sys.platform == "win32":
+                return self._is_trusted_windows(fingerprint)
             return False
         except Exception:
             return False
@@ -90,6 +95,44 @@ class CertManager:
         # Strip all whitespace so we can do a plain substring match.
         normalized = result.stdout.replace(" ", "").upper()
         return fingerprint in normalized
+
+    def _linux_ca_anchor(self) -> tuple[Path, list[str]] | tuple[None, None]:
+        """Return (cert_dir, update_cmd) for the current Linux distro, or (None, None) if unknown."""
+        if shutil.which("update-ca-certificates"):
+            # Debian / Ubuntu
+            return Path("/usr/local/share/ca-certificates"), ["update-ca-certificates"]
+        if shutil.which("update-ca-trust"):
+            # RHEL / Fedora / CentOS
+            return Path("/etc/pki/ca-trust/source/anchors"), ["update-ca-trust"]
+        if shutil.which("trust"):
+            # Arch
+            return Path("/etc/ca-certificates/trust-source/anchors"), ["trust", "extract-compat"]
+        return None, None
+
+    def _is_trusted_linux(self, fingerprint: str) -> bool:
+        cert_dir, _ = self._linux_ca_anchor()
+        if cert_dir is None:
+            return False
+        cert_file = cert_dir / f"{self._safe_app_id}.crt"
+        try:
+            installed = x509.load_pem_x509_certificate(cert_file.read_bytes())
+            return installed.fingerprint(hashes.SHA1()).hex().upper() == fingerprint
+        except Exception:
+            return False
+
+    def _is_trusted_windows(self, fingerprint: str) -> bool:
+        result = subprocess.run(
+            [
+                "powershell", "-NoProfile", "-Command",
+                f"(Get-ChildItem Cert:\\LocalMachine\\Root | Where-Object {{$_.Thumbprint -eq '{fingerprint}'}}).Count",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return False
+        return result.stdout.strip() != "0"
 
     def is_cert_valid(self, domain: str) -> bool:
         now = datetime.now(timezone.utc).timestamp()
@@ -191,6 +234,30 @@ class CertManager:
                         tmp_path,
                     ]
                 )
+            finally:
+                os.unlink(tmp_path)
+
+        elif sys.platform == "linux":
+            cert_dir, update_cmd = self._linux_ca_anchor()
+            if cert_dir is None:
+                logger.warning("Could not detect Linux CA trust mechanism; skipping installation")
+                return
+            cert_pem = self.get_root_cert_pem()
+            # System CA directories are not writable by regular users; use sudo tee.
+            subprocess.run(
+                ["sudo", "tee", str(cert_dir / f"{self._safe_app_id}.crt")],
+                input=cert_pem,
+                capture_output=True,
+            )
+            subprocess.run(["sudo"] + update_cmd)
+
+        elif sys.platform == "win32":
+            cert_pem = self.get_root_cert_pem()
+            fd, tmp_path = tempfile.mkstemp(prefix=f"{self._safe_app_id}_", suffix=".crt")
+            try:
+                os.write(fd, cert_pem)
+                os.close(fd)
+                subprocess.run(["certutil", "-addstore", "-f", "Root", tmp_path])
             finally:
                 os.unlink(tmp_path)
 
