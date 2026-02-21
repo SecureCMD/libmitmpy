@@ -141,7 +141,7 @@ class TrafficScreen(Screen):
         table.add_columns("Time", "Dir", "Size")
         self._update_mode_label()
         self._load_chunks()
-        self.set_interval(2.0, self._poll_new_chunks)
+        self.set_interval(0.5, self._poll_new_chunks)
 
     # ------------------------------------------------------------------
 
@@ -256,7 +256,7 @@ class PipesScreen(Screen):
         table = self.query_one("#pipes-table", DataTable)
         table.add_columns("Time", "Address", "Port", "Enc", "SNI", "ALPN", "Chunks")
         self._load_pipes()
-        self.set_interval(2.0, self._load_pipes)
+        self.set_interval(0.5, self._load_pipes)
 
     # ------------------------------------------------------------------
 
