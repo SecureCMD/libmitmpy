@@ -44,12 +44,16 @@ def _query(sql: str, params: tuple = ()) -> list:
 # ---------------------------------------------------------------------------
 
 def _hex_dump(data: bytes) -> str:
+    COLS = 32  # bytes per row
+    GROUP = 8  # bytes per space-separated group within a row
     lines = []
-    for i in range(0, len(data), 16):
-        row = data[i : i + 16]
-        left  = " ".join(f"{b:02x}" for b in row[:8])
-        right = " ".join(f"{b:02x}" for b in row[8:])
-        hex_part = f"{left:<23}  {right:<23}"
+    for i in range(0, len(data), COLS):
+        row = data[i : i + COLS]
+        groups = []
+        for g in range(0, COLS, GROUP):
+            chunk = row[g : g + GROUP]
+            groups.append(f"{' '.join(f'{b:02x}' for b in chunk):<{GROUP * 3 - 1}}")
+        hex_part = "  ".join(groups)
         printable = "".join(chr(b) if 32 <= b < 127 else "." for b in row)
         lines.append(f"{i:08x}  {hex_part}  |{printable}|")
     return "\n".join(lines)
@@ -84,9 +88,9 @@ def _render_text(data: bytes) -> Text:
 
 class TrafficScreen(Screen):
     BINDINGS = [
-        Binding("escape", "go_back",      "Back"),
-        Binding("left",   "go_back",      "Back",        show=False),
-        Binding("t",      "toggle_view",  "Toggle hex/text"),
+        Binding("escape", "go_back", "Back"),
+        Binding("left", "go_back", "Back", show=False),
+        Binding("t", "toggle_view", "Toggle hex/text"),
     ]
     CSS = """
     Horizontal { height: 1fr; }
@@ -115,10 +119,10 @@ class TrafficScreen(Screen):
 
     def __init__(self, pipe_id: int, subtitle: str) -> None:
         super().__init__()
-        self._pipe_id      = pipe_id
-        self._subtitle     = subtitle
-        self._chunk_ids:   list[int]    = []
-        self._hex_mode:    bool         = True
+        self._pipe_id = pipe_id
+        self._subtitle = subtitle
+        self._chunk_ids: list[int] = []
+        self._hex_mode: bool = True
         self._current_data: bytes | None = None
 
     def compose(self) -> ComposeResult:
@@ -206,7 +210,8 @@ class PipesScreen(Screen):
     BINDINGS = [
         Binding("enter", "select_pipe", "Inspect"),
         Binding("right", "select_pipe", "Inspect", show=False),
-        Binding("r",     "refresh",     "Refresh"),
+        Binding("r", "refresh", "Refresh"),
+        Binding("q", "app.quit", "Quit"),
     ]
     CSS = """
     DataTable { height: 1fr; }
