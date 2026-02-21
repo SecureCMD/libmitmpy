@@ -4,6 +4,7 @@ from pathlib import Path
 
 class Database:
     def __init__(self, path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(path), check_same_thread=False)
         self._conn.executescript("""
             PRAGMA journal_mode=WAL;
@@ -25,7 +26,8 @@ class Database:
                 dst_addr   TEXT NOT NULL,
                 dst_port   INTEGER NOT NULL,
                 sni        TEXT,
-                alpn       TEXT
+                alpn       TEXT,
+                encrypted  INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS traffic (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -19,10 +19,12 @@ class TrafficLogger:
         if isinstance(dst_addr, bytes):
             dst_addr = dst_addr.decode("utf-8", errors="replace")
         alpn = ",".join(meta.alpn_list) if meta.alpn_list else None
+        encrypted = 1 if meta.sni is not None else 0
         with self._lock:
             cur = self._conn.execute(
-                "INSERT INTO pipes (created_at, dst_addr, dst_port, sni, alpn) VALUES (?, ?, ?, ?, ?)",
-                (time.time(), dst_addr, meta.dst_port, meta.sni, alpn),
+                "INSERT INTO pipes (created_at, dst_addr, dst_port, sni, alpn, encrypted)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (time.time(), dst_addr, meta.dst_port, meta.sni, alpn, encrypted),
             )
             self._conn.commit()
             self._pipe_ids[id(pipe)] = cur.lastrowid
