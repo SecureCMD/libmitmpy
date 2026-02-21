@@ -23,6 +23,9 @@ dev = [
     "ruff",
     "pytest",
 ]
+viewer = [
+    "textual>=8.0.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["examples/mitm/tests"]
