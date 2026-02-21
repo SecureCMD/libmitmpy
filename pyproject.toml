@@ -26,6 +26,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["examples/mitm/tests"]
+pythonpath = ["examples/mitm"]
 
 [project.urls]
 Homepage = "https://github.com/Develatio/encripton"
