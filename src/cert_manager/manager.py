@@ -16,22 +16,18 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 logger = logging.getLogger(__name__)
 
-CERTS_PATH = Path(__file__).resolve().parent.parent.parent / "certs"
-
 
 class CertManager:
-    def __init__(self):
-        self.cert_cache_dir = CERTS_PATH
+    def __init__(self, data_dir: Path, app_id: str):
+        self._data_dir = data_dir
+        self._app_id = app_id
 
         self._domain_locks: dict[str, Lock] = {}
         self._domain_locks_lock = Lock()
 
-        os.makedirs(self.cert_cache_dir, exist_ok=True)
+        os.makedirs(self._data_dir, exist_ok=True)
 
-        self._db = sqlite3.connect(
-            str(self.cert_cache_dir / "certs.db"),
-            check_same_thread=False,
-        )
+        self._db = sqlite3.connect(str(self._data_dir / "certs.db"), check_same_thread=False)
         self._db.executescript("""
             CREATE TABLE IF NOT EXISTS root_cert (
                 id  INTEGER PRIMARY KEY CHECK (id = 1),
@@ -112,8 +108,8 @@ class CertManager:
         # Create subject and issuer (self-signed)
         subject = issuer = x509.Name(
             [
-                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "EncriptonMITM"),
-                x509.NameAttribute(NameOID.COMMON_NAME, "EncriptonMITM Root CA"),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, self._app_id),
+                x509.NameAttribute(NameOID.COMMON_NAME, f"{self._app_id} Root CA"),
             ]
         )
 

@@ -1,5 +1,6 @@
 import logging
 import socket
+from pathlib import Path
 
 from cert_manager import CertManager
 from core import AutoThread, SafeConnection, SafeSocket
@@ -12,16 +13,18 @@ logger = logging.getLogger(__name__)
 class Encripton:
     """Manage exit status"""
 
-    def __init__(self, local_addr: str, local_port):
+    def __init__(self, local_addr: str, local_port, app_id: str, data_dir: Path):
         self._halt = False
         self.local_addr = local_addr
         self.local_port = local_port
+        self.app_id = app_id
+        self.data_dir = data_dir
 
         # Configure MITM pipes manager
         self.pipemanager = PipeManager()
 
         # Configure root certs
-        self.certmanager = CertManager()
+        self.certmanager = CertManager(data_dir=data_dir, app_id=app_id)
         if not self.certmanager.is_root_cert_valid() or not self.certmanager.is_root_cert_trusted():
             self.certmanager.create_root_cert()
             self.certmanager.install_root_cert()

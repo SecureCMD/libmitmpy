@@ -3,6 +3,8 @@ import threading
 from datetime import datetime as dt
 from signal import SIGINT, SIGTERM, signal
 
+from config import APP_ID, DATA_DIR
+
 from encripton import Encripton
 
 
@@ -33,5 +35,5 @@ LOCAL_PORT = 9090
 signal(SIGINT, lambda *args, **kwargs: encripton.stop())
 signal(SIGTERM, lambda *args, **kwargs: encripton.stop())
 
-encripton = Encripton(local_addr=LOCAL_ADDR, local_port=LOCAL_PORT)
+encripton = Encripton(local_addr=LOCAL_ADDR, local_port=LOCAL_PORT, app_id=APP_ID, data_dir=DATA_DIR)
 encripton.start()

@@ -4,8 +4,9 @@ from pathlib import Path
 
 import pytest
 
-# examples/mitm/tests/ -> examples/mitm/ -> examples/ -> encriptón/
-_CERTS_DB = Path(__file__).resolve().parents[3] / "certs/certs.db"
+from config import DATA_DIR
+
+_CERTS_DB = DATA_DIR / "certs.db"
 
 
 @pytest.fixture
