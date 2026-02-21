@@ -94,6 +94,7 @@ class Pipe(EventMixin):
 
                 with self.outgoing_locked() as buf:
                     buf.extend(data)
+                # TODO: We're sending "data" as param. I'm not sure if we need to
                 self.emit("outgoing_data_available", self, data=data)
 
         except (OSError, ssl.SSLError):
@@ -117,6 +118,7 @@ class Pipe(EventMixin):
 
                 with self.incoming_locked() as buf:
                     buf.extend(data)
+                # TODO: We're sending "data" as param. I'm not sure if we need to
                 self.emit("incoming_data_available", self, data=data)
 
         except (OSError, ssl.SSLError):
