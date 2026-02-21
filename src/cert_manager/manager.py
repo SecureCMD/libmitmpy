@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class CertManager:
-    def __init__(self, data_dir: Path, app_id: str):
+    def __init__(self, data_dir: Path, app_id: str, db_conn: sqlite3.Connection):
         self._data_dir = data_dir
         self._app_id = app_id
 
@@ -29,20 +29,7 @@ class CertManager:
 
         os.makedirs(self._data_dir, exist_ok=True)
 
-        self._db = sqlite3.connect(str(self._data_dir / "certs.db"), check_same_thread=False)
-        self._db.executescript("""
-            CREATE TABLE IF NOT EXISTS root_cert (
-                id  INTEGER PRIMARY KEY CHECK (id = 1),
-                cert_pem BLOB NOT NULL,
-                key_pem  BLOB NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS leaf_certs (
-                domain   TEXT PRIMARY KEY,
-                cert_pem BLOB NOT NULL,
-                key_pem  BLOB NOT NULL,
-                expires_at REAL NOT NULL
-            );
-        """)
+        self._db = db_conn
 
     @property
     def _safe_app_id(self) -> str:

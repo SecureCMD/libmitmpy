@@ -7,12 +7,14 @@ from typing import Any
 from core import AutoThread
 from interceptors import BaseInterceptor, DummyInterceptor, HTTPInterceptor
 from net.socks import Pipe
+from traffic_logger import TrafficLogger
 
 logger = logging.getLogger(__name__)
 
 
 class PipeManager:
-    def __init__(self):
+    def __init__(self, traffic_logger: TrafficLogger):
+        self._traffic_logger = traffic_logger
         self.pipes: dict[Pipe, dict] = defaultdict(
             lambda: {
                 "pending_outgoing": 0,
@@ -75,6 +77,12 @@ class PipeManager:
                             self._enqueue_event(event_type, pipe)
 
                     case "outgoing_data_available":
+                        data_chunk = kwargs.pop("data", None)
+                        if data_chunk is not None:
+                            try:
+                                self._traffic_logger.log_outgoing(pipe, data_chunk)
+                            except Exception:
+                                logger.exception("TrafficLogger failed on outgoing data for pipe %s", pipe)
                         with pipe.outgoing_locked():
                             for interceptor in self.interceptors:
                                 try:
@@ -85,6 +93,12 @@ class PipeManager:
                                 self.pipes[pipe]["pending_outgoing"] -= 1
 
                     case "incoming_data_available":
+                        data_chunk = kwargs.pop("data", None)
+                        if data_chunk is not None:
+                            try:
+                                self._traffic_logger.log_incoming(pipe, data_chunk)
+                            except Exception:
+                                logger.exception("TrafficLogger failed on incoming data for pipe %s", pipe)
                         with pipe.incoming_locked():
                             for interceptor in self.interceptors:
                                 try:
@@ -139,6 +153,8 @@ class PipeManager:
         ]:
             pipe.on(event, lambda p, e=event, **kw: self._enqueue_event(e, p, **kw))
 
+        self._traffic_logger.register_pipe(pipe)
+
         logger.info(f"Starting pipe {pipe}")
         pipe.start()
 
@@ -150,6 +166,8 @@ class PipeManager:
         pipe.off("pipe_finished")
         pipe.off("outgoing_data_available")
         pipe.off("incoming_data_available")
+
+        self._traffic_logger.unregister_pipe(pipe)
 
         logger.debug(f"Removing pipe {pipe} from pipe manager")
 

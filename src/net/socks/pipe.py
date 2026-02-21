@@ -94,7 +94,7 @@ class Pipe(EventMixin):
 
                 with self.outgoing_locked() as buf:
                     buf.extend(data)
-                self.emit("outgoing_data_available", self)
+                self.emit("outgoing_data_available", self, data=data)
 
         except (OSError, ssl.SSLError):
             logger.error("Something failed, killing pipe...")
@@ -117,7 +117,7 @@ class Pipe(EventMixin):
 
                 with self.incoming_locked() as buf:
                     buf.extend(data)
-                self.emit("incoming_data_available", self)
+                self.emit("incoming_data_available", self, data=data)
 
         except (OSError, ssl.SSLError):
             logger.error("Something failed, killing pipe...")

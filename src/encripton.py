@@ -4,8 +4,10 @@ from pathlib import Path
 
 from cert_manager import CertManager
 from core import AutoThread, SafeConnection, SafeSocket
+from db import Database
 from net import socks, tls
 from pipe_manager import PipeManager
+from traffic_logger import TrafficLogger
 
 logger = logging.getLogger(__name__)
 
@@ -20,14 +22,18 @@ class Encripton:
         self.app_id = app_id
         self.data_dir = data_dir
 
-        # Configure MITM pipes manager
-        self.pipemanager = PipeManager()
+        # Shared database (certs + traffic)
+        self.db = Database(data_dir / "data.db")
 
         # Configure root certs
-        self.certmanager = CertManager(data_dir=data_dir, app_id=app_id)
+        self.certmanager = CertManager(data_dir=data_dir, app_id=app_id, db_conn=self.db.connection)
         if not self.certmanager.is_root_cert_valid() or not self.certmanager.is_root_cert_trusted():
             self.certmanager.create_root_cert()
             self.certmanager.install_root_cert()
+
+        # Configure MITM pipes manager with traffic logger
+        self._traffic_logger = TrafficLogger(self.db)
+        self.pipemanager = PipeManager(traffic_logger=self._traffic_logger)
 
         # Creat the main socket
         self.main_socket = SafeSocket.create()

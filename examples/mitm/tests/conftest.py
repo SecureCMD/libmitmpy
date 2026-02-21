@@ -6,7 +6,7 @@ import pytest
 
 from config import DATA_DIR
 
-_CERTS_DB = DATA_DIR / "certs.db"
+_CERTS_DB = DATA_DIR / "data.db"
 
 
 @pytest.fixture
