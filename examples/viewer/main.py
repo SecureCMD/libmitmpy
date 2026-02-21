@@ -16,9 +16,9 @@ from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Header, Static
+from textual.widgets import DataTable, Footer, Header, Label, Static
 
 DB_PATH = DATA_DIR / "data.db"
 MAX_DISPLAY_BYTES = 16 * 1024  # 16 KiB — truncate beyond this to keep the UI responsive
@@ -55,13 +55,21 @@ def _hex_dump(data: bytes) -> str:
     return "\n".join(lines)
 
 
-def _render_data(data: bytes) -> Text:
-    """Try to decode as UTF-8, fall back to hex dump. Truncates large blobs."""
+def _render_hex(data: bytes) -> Text:
     display = data[:MAX_DISPLAY_BYTES]
-    try:
-        content = Text(display.decode("utf-8"))
-    except UnicodeDecodeError:
-        content = Text(_hex_dump(display), style="green")
+    content = Text(_hex_dump(display), style="green")
+    if len(data) > MAX_DISPLAY_BYTES:
+        content.append(
+            f"\n\n… {len(data) - MAX_DISPLAY_BYTES} more bytes not shown",
+            style="dim italic",
+        )
+    return content
+
+
+def _render_text(data: bytes) -> Text:
+    """Decode as UTF-8, replacing undecodable bytes with \ufffd."""
+    display = data[:MAX_DISPLAY_BYTES]
+    content = Text(display.decode("utf-8", errors="replace"))
     if len(data) > MAX_DISPLAY_BYTES:
         content.append(
             f"\n\n… {len(data) - MAX_DISPLAY_BYTES} more bytes not shown",
@@ -76,42 +84,71 @@ def _render_data(data: bytes) -> Text:
 
 class TrafficScreen(Screen):
     BINDINGS = [
-        Binding("escape", "go_back", "Back"),
-        Binding("left",   "go_back", "Back", show=False),
+        Binding("escape", "go_back",      "Back"),
+        Binding("left",   "go_back",      "Back",        show=False),
+        Binding("t",      "toggle_view",  "Toggle hex/text"),
     ]
     CSS = """
-    Horizontal   { height: 1fr; }
+    Horizontal { height: 1fr; }
 
     #traffic-table {
         width: 2fr;
         border-right: solid $accent;
     }
 
-    #data-view {
+    #data-panel {
         width: 3fr;
+    }
+
+    #view-mode-label {
+        height: 1;
+        padding: 0 1;
+        background: $accent;
+        color: $text;
+    }
+
+    #data-view {
+        height: 1fr;
         padding: 0 1;
     }
     """
 
     def __init__(self, pipe_id: int, subtitle: str) -> None:
         super().__init__()
-        self._pipe_id    = pipe_id
-        self._subtitle   = subtitle
-        self._chunk_ids: list[int] = []
+        self._pipe_id      = pipe_id
+        self._subtitle     = subtitle
+        self._chunk_ids:   list[int]    = []
+        self._hex_mode:    bool         = True
+        self._current_data: bytes | None = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with Horizontal():
             yield DataTable(id="traffic-table", cursor_type="row")
-            with VerticalScroll(id="data-view"):
-                yield Static(id="data-content")
+            with Vertical(id="data-panel"):
+                yield Label("", id="view-mode-label")
+                with VerticalScroll(id="data-view"):
+                    yield Static(id="data-content")
         yield Footer()
 
     def on_mount(self) -> None:
         self.sub_title = self._subtitle
         table = self.query_one("#traffic-table", DataTable)
         table.add_columns("Time", "Dir", "Size")
+        self._update_mode_label()
         self._load_chunks()
+
+    # ------------------------------------------------------------------
+
+    def _update_mode_label(self) -> None:
+        mode = "HEX" if self._hex_mode else "TEXT"
+        self.query_one("#view-mode-label", Label).update(f" {mode}  (T to toggle)")
+
+    def _update_content(self) -> None:
+        if self._current_data is None:
+            return
+        render = _render_hex if self._hex_mode else _render_text
+        self.query_one("#data-content", Static).update(render(self._current_data))
 
     # ------------------------------------------------------------------
 
@@ -141,7 +178,8 @@ class TrafficScreen(Screen):
         rows = _query("SELECT data FROM traffic WHERE id = ?", (chunk_id,))
         if not rows:
             return
-        self.query_one("#data-content", Static).update(_render_data(bytes(rows[0][0])))
+        self._current_data = bytes(rows[0][0])
+        self._update_content()
 
     # ------------------------------------------------------------------
 
@@ -150,6 +188,11 @@ class TrafficScreen(Screen):
         idx = event.cursor_row
         if 0 <= idx < len(self._chunk_ids):
             self._show_chunk(self._chunk_ids[idx])
+
+    def action_toggle_view(self) -> None:
+        self._hex_mode = not self._hex_mode
+        self._update_mode_label()
+        self._update_content()
 
     def action_go_back(self) -> None:
         self.app.pop_screen()
