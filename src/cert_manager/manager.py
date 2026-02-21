@@ -4,6 +4,7 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from threading import Lock
 from typing import Tuple
 
 from cryptography import x509
@@ -26,6 +27,9 @@ class CertManager:
         self.cert_cache_dir = CERTS_PATH
         self.root_cert = ROOT_CERT
         self.root_key = ROOT_KEY
+
+        self._domain_locks: dict[str, Lock] = {}
+        self._domain_locks_lock = Lock()
 
         os.makedirs(self.cert_cache_dir, exist_ok=True)
 
@@ -163,35 +167,42 @@ class CertManager:
                 ]
             )
 
+    def _get_domain_lock(self, domain: str) -> Lock:
+        with self._domain_locks_lock:
+            if domain not in self._domain_locks:
+                self._domain_locks[domain] = Lock()
+            return self._domain_locks[domain]
+
     def get_or_generate_cert(self, domain) -> Tuple[str, str]:
-        cert_path = self.cert_cache_dir / CERT.format(domain=domain)
-        key_path = self.cert_cache_dir / KEY.format(domain=domain)
+        with self._get_domain_lock(domain):
+            cert_path = self.cert_cache_dir / CERT.format(domain=domain)
+            key_path = self.cert_cache_dir / KEY.format(domain=domain)
 
-        if not os.path.exists(cert_path) or not os.path.exists(key_path) or not self.is_cert_valid(domain):
-            logger.info(f"Generating spoofed cert for {domain}")
-            cert_pem, key_pem = self.generate_signed_cert(domain)
+            if not os.path.exists(cert_path) or not os.path.exists(key_path) or not self.is_cert_valid(domain):
+                logger.info(f"Generating spoofed cert for {domain}")
+                cert_pem, key_pem = self.generate_signed_cert(domain)
 
-            with open(cert_path, "wb") as f:
-                f.write(cert_pem)
+                with open(cert_path, "wb") as f:
+                    f.write(cert_pem)
 
-            with open(key_path, "wb") as f:
-                f.write(key_pem)
+                with open(key_path, "wb") as f:
+                    f.write(key_pem)
+
+                return cert_pem, key_pem
+
+            with open(cert_path, "rb") as f:
+                cert = x509.load_pem_x509_certificate(f.read())
+                cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+
+            with open(key_path, "rb") as f:
+                key = serialization.load_pem_private_key(f.read(), password=None)
+                key_pem = key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.TraditionalOpenSSL,
+                    encryption_algorithm=serialization.NoEncryption(),
+                )
 
             return cert_pem, key_pem
-
-        with open(cert_path, "rb") as f:
-            cert = x509.load_pem_x509_certificate(f.read())
-            cert_pem = cert.public_bytes(serialization.Encoding.PEM)
-
-        with open(key_path, "rb") as f:
-            key = serialization.load_pem_private_key(f.read(), password=None)
-            key_pem = key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.TraditionalOpenSSL,
-                encryption_algorithm=serialization.NoEncryption(),
-            )
-
-        return cert_pem, key_pem
 
     def generate_signed_cert(self, domain) -> Tuple[bytes, bytes]:
         # Load cert and CA key
