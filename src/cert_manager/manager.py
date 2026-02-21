@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -41,6 +42,13 @@ class CertManager:
                 expires_at REAL NOT NULL
             );
         """)
+
+    @property
+    def _safe_app_id(self) -> str:
+        """app_id stripped down to [a-z0-9_-], safe for use as a filename on any filesystem."""
+        s = re.sub(r"[^a-z0-9\-]", "_", self._app_id.lower())
+        s = re.sub(r"_+", "_", s)
+        return s.strip("_") or "encripton"
 
     def _root_row(self):
         return self._db.execute("SELECT cert_pem, key_pem FROM root_cert WHERE id = 1").fetchone()
@@ -167,7 +175,7 @@ class CertManager:
 
         if sys.platform == "darwin":
             cert_pem = self.get_root_cert_pem()
-            fd, tmp_path = tempfile.mkstemp(suffix=".pem")
+            fd, tmp_path = tempfile.mkstemp(prefix=f"{self._safe_app_id}_", suffix=".pem")
             try:
                 os.write(fd, cert_pem)
                 os.close(fd)
