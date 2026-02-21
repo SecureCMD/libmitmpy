@@ -215,16 +215,40 @@ class CertManager:
 
         return cert_pem, key_pem
 
+    def _remove_old_root_certs_macos(self):
+        """Delete every cert in the system keychain whose CN matches ours."""
+        cn = f"{self._app_id} Root CA"
+        while True:
+            result = subprocess.run(
+                ["sudo", "security", "delete-certificate", "-c", cn, "/Library/Keychains/System.keychain"],
+                capture_output=True,
+            )
+            if result.returncode != 0:
+                break
+
+    def _remove_old_root_certs_windows(self):
+        """Delete every cert in LocalMachine\\Root whose Subject starts with our CN."""
+        cn = f"{self._app_id} Root CA".replace("'", "''")  # escape for PowerShell single-quoted string
+        subprocess.run(
+            [
+                "powershell", "-NoProfile", "-Command",
+                f"Get-ChildItem Cert:\\LocalMachine\\Root"
+                f" | Where-Object {{$_.Subject.StartsWith('CN={cn}')}}"
+                f" | Remove-Item -Force",
+            ],
+            capture_output=True,
+        )
+
     def install_root_cert(self):
         logger.info("Installing root cert")
 
         if sys.platform == "darwin":
+            self._remove_old_root_certs_macos()
             cert_pem = self.get_root_cert_pem()
             fd, tmp_path = tempfile.mkstemp(prefix=f"{self._safe_app_id}_", suffix=".pem")
             try:
                 os.write(fd, cert_pem)
                 os.close(fd)
-                # TODO: delete previous versions
                 subprocess.run(
                     [
                         "sudo",
@@ -245,7 +269,7 @@ class CertManager:
                 logger.warning("Could not detect Linux CA trust mechanism; skipping installation")
                 return
             cert_pem = self.get_root_cert_pem()
-            # System CA directories are not writable by regular users; use sudo tee.
+            # sudo tee overwrites the fixed filename in-place, so no separate removal step needed.
             subprocess.run(
                 ["sudo", "tee", str(cert_dir / f"{self._safe_app_id}.crt")],
                 input=cert_pem,
@@ -254,6 +278,7 @@ class CertManager:
             subprocess.run(["sudo"] + update_cmd)
 
         elif sys.platform == "win32":
+            self._remove_old_root_certs_windows()
             cert_pem = self.get_root_cert_pem()
             fd, tmp_path = tempfile.mkstemp(prefix=f"{self._safe_app_id}_", suffix=".crt")
             try:
