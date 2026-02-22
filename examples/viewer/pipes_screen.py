@@ -58,7 +58,7 @@ class PipesScreen(Screen):
             FROM pipes p
             LEFT JOIN traffic t ON t.pipe_id = p.id
             GROUP BY p.id
-            ORDER BY p.created_at DESC
+            ORDER BY p.created_at ASC
         """)
 
         for pipe_id, created_at, pid, process_name, dst_addr, dst_port, encrypted, sni, alpn, chunks in rows:
