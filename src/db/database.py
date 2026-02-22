@@ -21,13 +21,15 @@ class Database:
                 expires_at REAL NOT NULL
             );
             CREATE TABLE IF NOT EXISTS pipes (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at REAL NOT NULL,
-                dst_addr   TEXT NOT NULL,
-                dst_port   INTEGER NOT NULL,
-                sni        TEXT,
-                alpn       TEXT,
-                encrypted  INTEGER NOT NULL DEFAULT 0
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at   REAL NOT NULL,
+                dst_addr     TEXT NOT NULL,
+                dst_port     INTEGER NOT NULL,
+                sni          TEXT,
+                alpn         TEXT,
+                encrypted    INTEGER NOT NULL DEFAULT 0,
+                pid          INTEGER,
+                process_name TEXT
             );
             CREATE TABLE IF NOT EXISTS traffic (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,6 +39,13 @@ class Database:
                 data        BLOB NOT NULL
             );
         """)
+
+        for col in ("pid INTEGER", "process_name TEXT"):
+            try:
+                self._conn.execute(f"ALTER TABLE pipes ADD COLUMN {col}")
+                self._conn.commit()
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
     @property
     def connection(self) -> sqlite3.Connection:

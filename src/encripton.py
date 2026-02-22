@@ -167,6 +167,8 @@ class Encripton:
                 dst_port=dst_port,
                 sni=sni,
                 alpn_list=alpn_list,
+                pid=pid,
+                process_name=process_name,
             )
             pipe = socks.Pipe(downstream=client_conn, upstream=target_conn, metainfo=metainfo)
 

@@ -33,6 +33,7 @@ class Client:
             header = self.socket.recvall(2)
             ver, nmethods = header[0:1], header[1]
             if ver != VER or nmethods == 0:
+                logger.warning(f"Protocol VER {ver} is not supported")
                 self.socket.sendall(ver + M_NOTAVAILABLE)
                 self.socket.close()
                 return False

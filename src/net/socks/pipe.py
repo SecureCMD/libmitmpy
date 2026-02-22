@@ -19,6 +19,8 @@ class PipeMetaInfo:
     dst_port: int
     sni: Optional[str] = None
     alpn_list: Optional[Tuple[str]] = field(default_factory=tuple)
+    pid: Optional[int] = None
+    process_name: Optional[str] = None
 
 
 class Pipe(EventMixin):

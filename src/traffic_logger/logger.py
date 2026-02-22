@@ -22,9 +22,9 @@ class TrafficLogger:
         encrypted = 1 if meta.sni is not None else 0
         with self._lock:
             cur = self._conn.execute(
-                "INSERT INTO pipes (created_at, dst_addr, dst_port, sni, alpn, encrypted)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                (time.time(), dst_addr, meta.dst_port, meta.sni, alpn, encrypted),
+                "INSERT INTO pipes (created_at, dst_addr, dst_port, sni, alpn, encrypted, pid, process_name)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (time.time(), dst_addr, meta.dst_port, meta.sni, alpn, encrypted, meta.pid, meta.process_name),
             )
             self._conn.commit()
             self._pipe_ids[id(pipe)] = cur.lastrowid

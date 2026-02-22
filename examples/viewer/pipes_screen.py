@@ -32,7 +32,7 @@ class PipesScreen(Screen):
 
     def on_mount(self) -> None:
         table = self.query_one("#pipes-table", DataTable)
-        table.add_columns("Time", "Address", "Port", "Enc", "SNI", "ALPN", "Chunks")
+        table.add_columns("Time", "PID", "Process", "Address", "Port", "Enc", "SNI", "ALPN", "Chunks")
         self._load_pipes()
         self.set_interval(0.5, self._load_pipes)
 
@@ -47,6 +47,8 @@ class PipesScreen(Screen):
         rows = query("""
             SELECT p.id,
                    p.created_at,
+                   p.pid,
+                   p.process_name,
                    p.dst_addr,
                    p.dst_port,
                    p.encrypted,
@@ -59,12 +61,14 @@ class PipesScreen(Screen):
             ORDER BY p.created_at DESC
         """)
 
-        for pipe_id, created_at, dst_addr, dst_port, encrypted, sni, alpn, chunks in rows:
+        for pipe_id, created_at, pid, process_name, dst_addr, dst_port, encrypted, sni, alpn, chunks in rows:
             self._pipe_ids.append(pipe_id)
             ts = datetime.fromtimestamp(created_at).strftime("%H:%M:%S")
             enc_label = Text("🔒 yes", style="green") if encrypted else Text("   no", style="dim")
             table.add_row(
                 ts,
+                str(pid) if pid is not None else "—",
+                process_name or "—",
                 dst_addr,
                 str(dst_port),
                 enc_label,
