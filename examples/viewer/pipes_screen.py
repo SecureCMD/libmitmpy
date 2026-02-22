@@ -15,6 +15,7 @@ class PipesScreen(Screen):
         Binding("enter", "select_pipe", "Inspect"),
         Binding("right", "select_pipe", "Inspect", show=False),
         Binding("r", "refresh", "Refresh"),
+        Binding("f", "toggle_follow", "Follow"),
         Binding("q", "app.quit", "Quit"),
     ]
     CSS = """
@@ -24,6 +25,7 @@ class PipesScreen(Screen):
     def __init__(self) -> None:
         super().__init__()
         self._pipe_ids: list[int] = []
+        self._follow: bool = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -77,14 +79,23 @@ class PipesScreen(Screen):
                 str(chunks),
             )
 
-        # restore cursor position after refresh
-        if self._pipe_ids and prev_row < len(self._pipe_ids):
+        if not self._pipe_ids:
+            return
+        if self._follow:
+            table.move_cursor(row=len(self._pipe_ids) - 1)
+        elif prev_row < len(self._pipe_ids):
             table.move_cursor(row=prev_row)
 
     # ------------------------------------------------------------------
 
     def action_refresh(self) -> None:
         self._load_pipes()
+
+    def action_toggle_follow(self) -> None:
+        self._follow = not self._follow
+        self.notify("Follow: ON" if self._follow else "Follow: OFF", timeout=1.5)
+        if self._follow:
+            self._load_pipes()
 
     def action_select_pipe(self) -> None:
         table = self.query_one("#pipes-table", DataTable)
