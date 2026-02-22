@@ -25,7 +25,6 @@ class TrafficTable(DataTable):
 class TrafficScreen(Screen):
     BINDINGS = [
         Binding("escape", "go_back", "Back"),
-        Binding("left", "go_back", "Back", show=False),
         Binding("t", "toggle_view", "Toggle hex/text"),
     ]
     CSS = """

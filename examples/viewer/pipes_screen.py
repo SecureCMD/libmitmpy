@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from rich.text import Text
+from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
@@ -15,8 +16,6 @@ from traffic_screen import TrafficScreen
 
 class PipesScreen(Screen):
     BINDINGS = [
-        Binding("enter", "select_pipe", "Inspect"),
-        Binding("right", "select_pipe", "Inspect", show=False),
         Binding("r", "refresh", "Refresh"),
         Binding("f", "toggle_follow", "Follow"),
         Binding("/", "open_filter", "Filter"),
@@ -243,6 +242,10 @@ class PipesScreen(Screen):
                 self.notify("Filters cleared", timeout=1.5)
 
         self.app.push_screen(FilterModal(self._filters), _on_dismiss)
+
+    @on(DataTable.RowSelected, "#pipes-table")
+    def _on_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.action_select_pipe()
 
     def action_select_pipe(self) -> None:
         table = self.query_one("#pipes-table", DataTable)
