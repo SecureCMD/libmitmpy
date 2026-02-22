@@ -1,8 +1,16 @@
+import re
 import sqlite3
 
 from config import DATA_DIR
 
 DB_PATH = DATA_DIR / "data.db"
+
+
+def _regexp(pattern: str, value) -> bool:
+    try:
+        return bool(re.search(pattern, value or ""))
+    except re.error:
+        return False
 
 
 def query(sql: str, params: tuple = ()) -> list:
@@ -11,6 +19,7 @@ def query(sql: str, params: tuple = ()) -> list:
         return []
     try:
         with sqlite3.connect(str(DB_PATH)) as conn:
+            conn.create_function("regexp", 2, _regexp)
             return conn.execute(sql, params).fetchall()
     except sqlite3.Error:
         return []
