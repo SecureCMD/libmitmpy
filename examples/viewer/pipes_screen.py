@@ -26,6 +26,7 @@ class PipesScreen(Screen):
         super().__init__()
         self._pipe_ids: list[int] = []
         self._follow: bool = False
+        self._last_pipe_id: int = 0
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -36,35 +37,31 @@ class PipesScreen(Screen):
         table = self.query_one("#pipes-table", DataTable)
         table.add_columns("Time", "PID", "Process", "Address", "Port", "Enc", "SNI", "ALPN", "Chunks")
         self._load_pipes()
-        self.set_interval(0.5, self._load_pipes)
+        self.set_interval(0.5, self._poll_pipes)
 
-    # ------------------------------------------------------------------
+    _QUERY = """
+        SELECT p.id,
+               p.created_at,
+               p.pid,
+               p.process_name,
+               p.dst_addr,
+               p.dst_port,
+               p.encrypted,
+               p.sni,
+               p.alpn,
+               COUNT(t.id) AS chunks
+        FROM pipes p
+        LEFT JOIN traffic t ON t.pipe_id = p.id
+        WHERE p.id > ?
+        GROUP BY p.id
+        ORDER BY p.created_at ASC
+    """
 
-    def _load_pipes(self) -> None:
-        table = self.query_one("#pipes-table", DataTable)
-        prev_row = table.cursor_row
-        table.clear()
-        self._pipe_ids.clear()
-
-        rows = query("""
-            SELECT p.id,
-                   p.created_at,
-                   p.pid,
-                   p.process_name,
-                   p.dst_addr,
-                   p.dst_port,
-                   p.encrypted,
-                   p.sni,
-                   p.alpn,
-                   COUNT(t.id) AS chunks
-            FROM pipes p
-            LEFT JOIN traffic t ON t.pipe_id = p.id
-            GROUP BY p.id
-            ORDER BY p.created_at ASC
-        """)
-
+    def _append_rows(self, table: DataTable, rows: list) -> int:
+        """Add rows to the table, return the count of rows added."""
         for pipe_id, created_at, pid, process_name, dst_addr, dst_port, encrypted, sni, alpn, chunks in rows:
             self._pipe_ids.append(pipe_id)
+            self._last_pipe_id = max(self._last_pipe_id, pipe_id)
             ts = datetime.fromtimestamp(created_at).strftime("%H:%M:%S")
             enc_label = Text("🔒 yes", style="green") if encrypted else Text("   no", style="dim")
             table.add_row(
@@ -78,13 +75,29 @@ class PipesScreen(Screen):
                 alpn or "—",
                 str(chunks),
             )
+        return len(rows)
 
-        if not self._pipe_ids:
+    # ------------------------------------------------------------------
+
+    def _load_pipes(self) -> None:
+        """Full reload — clears the table and re-fetches everything."""
+        table = self.query_one("#pipes-table", DataTable)
+        table.clear()
+        self._pipe_ids.clear()
+        self._last_pipe_id = 0
+        self._append_rows(table, query(self._QUERY, (0,)))
+        if self._follow and self._pipe_ids:
+            table.move_cursor(row=len(self._pipe_ids) - 1)
+
+    def _poll_pipes(self) -> None:
+        """Incremental update — only fetches pipes newer than the last seen id."""
+        rows = query(self._QUERY, (self._last_pipe_id,))
+        if not rows:
             return
+        table = self.query_one("#pipes-table", DataTable)
+        self._append_rows(table, rows)
         if self._follow:
             table.move_cursor(row=len(self._pipe_ids) - 1)
-        elif prev_row < len(self._pipe_ids):
-            table.move_cursor(row=prev_row)
 
     # ------------------------------------------------------------------
 
@@ -94,8 +107,8 @@ class PipesScreen(Screen):
     def action_toggle_follow(self) -> None:
         self._follow = not self._follow
         self.notify("Follow: ON" if self._follow else "Follow: OFF", timeout=1.5)
-        if self._follow:
-            self._load_pipes()
+        if self._follow and self._pipe_ids:
+            self.query_one("#pipes-table", DataTable).move_cursor(row=len(self._pipe_ids) - 1)
 
     def action_select_pipe(self) -> None:
         table = self.query_one("#pipes-table", DataTable)
