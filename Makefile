@@ -11,3 +11,6 @@ test:
 
 mitm:
 	python examples/mitm/main.py
+
+viewer:
+	python examples/viewer/main.py
