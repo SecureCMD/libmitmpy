@@ -100,7 +100,7 @@ class PipesScreen(Screen):
         self._last_pipe_id: int = 0
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
+        yield Header(show_clock=False)
         yield DataTable(id="pipes-table", cursor_type="row")
         yield Footer()
 
