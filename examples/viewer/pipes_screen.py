@@ -13,6 +13,12 @@ from db import query
 
 
 class QuitModal(ModalScreen[bool]):
+    BINDINGS = [
+        Binding("y", "press_yes", "Yes", show=False),
+        Binding("n", "press_no", "No", show=False),
+        Binding("left", "focus_yes", "", show=False),
+        Binding("right", "focus_no", "", show=False),
+    ]
     CSS = """
     QuitModal {
         align: center middle;
@@ -37,6 +43,7 @@ class QuitModal(ModalScreen[bool]):
     }
     #dialog-buttons Button {
         margin: 0 1;
+        min-width: 0;
         width: 10;
         text-align: center;
         content-align: center middle;
@@ -49,6 +56,21 @@ class QuitModal(ModalScreen[bool]):
             with Horizontal(id="dialog-buttons"):
                 yield Button("Yes", variant="error", id="btn-yes")
                 yield Button("No", variant="primary", id="btn-no")
+
+    def on_mount(self) -> None:
+        self.query_one("#btn-no", Button).focus()
+
+    def action_press_yes(self) -> None:
+        self.dismiss(True)
+
+    def action_press_no(self) -> None:
+        self.dismiss(False)
+
+    def action_focus_yes(self) -> None:
+        self.query_one("#btn-yes", Button).focus()
+
+    def action_focus_no(self) -> None:
+        self.query_one("#btn-no", Button).focus()
 
     @on(Button.Pressed, "#btn-yes")
     def _yes(self) -> None:
