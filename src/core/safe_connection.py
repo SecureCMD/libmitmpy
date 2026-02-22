@@ -57,7 +57,7 @@ class SafeConnection:
         except SSL.ZeroReturnError:
             return b""  # clean TLS shutdown (close_notify received)
         except SSL.SysCallError as e:
-            if e.args == (-1, "Unexpected EOF"):
+            if e.args[0] in (-1, 54):  # Unexpected EOF or ECONNRESET
                 return b""  # treat as closed connection
             raise
 
