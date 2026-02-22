@@ -44,7 +44,7 @@ def _query(sql: str, params: tuple = ()) -> list:
 # ---------------------------------------------------------------------------
 
 def _hex_dump(data: bytes) -> str:
-    COLS = 32  # bytes per row
+    COLS = 16  # bytes per row
     GROUP = 8  # bytes per space-separated group within a row
     lines = []
     for i in range(0, len(data), COLS):
@@ -96,12 +96,12 @@ class TrafficScreen(Screen):
     Horizontal { height: 1fr; }
 
     #traffic-table {
-        width: 2fr;
+        width: auto;
         border-right: solid $accent;
     }
 
     #data-panel {
-        width: 3fr;
+        width: 1fr;
     }
 
     #view-mode-label {
@@ -138,7 +138,9 @@ class TrafficScreen(Screen):
     def on_mount(self) -> None:
         self.sub_title = self._subtitle
         table = self.query_one("#traffic-table", DataTable)
-        table.add_columns("Time", "Dir", "Size")
+        table.add_column("Time", width=12)
+        table.add_column("Dir", width=5)
+        table.add_column("Size", width=8)
         self._update_mode_label()
         self._load_chunks()
         self.set_interval(0.5, self._poll_new_chunks)
