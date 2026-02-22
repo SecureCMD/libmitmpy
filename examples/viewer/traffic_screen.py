@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from rich.text import Text
-from textual import on
+from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -10,6 +10,16 @@ from textual.widgets import DataTable, Footer, Header, Label, Static
 
 from db import query
 from render import render_hex, render_text
+
+
+class TrafficTable(DataTable):
+    def _on_mouse_scroll_down(self, event: events.MouseScrollDown) -> None:
+        self.action_cursor_down()
+        event.stop()
+
+    def _on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
+        self.action_cursor_up()
+        event.stop()
 
 
 class TrafficScreen(Screen):
@@ -55,7 +65,7 @@ class TrafficScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with Horizontal():
-            yield DataTable(id="traffic-table", cursor_type="row")
+            yield TrafficTable(id="traffic-table", cursor_type="row")
             with Vertical(id="data-panel"):
                 yield Label("", id="view-mode-label")
                 with VerticalScroll(id="data-view"):
@@ -64,7 +74,7 @@ class TrafficScreen(Screen):
 
     def on_mount(self) -> None:
         self.sub_title = self._subtitle
-        table = self.query_one("#traffic-table", DataTable)
+        table = self.query_one("#traffic-table", TrafficTable)
         table.add_column("Time", width=12)
         table.add_column("Dir", width=5)
         table.add_column("Size", width=8)
@@ -87,7 +97,7 @@ class TrafficScreen(Screen):
     # ------------------------------------------------------------------
 
     def _load_chunks(self) -> None:
-        table = self.query_one("#traffic-table", DataTable)
+        table = self.query_one("#traffic-table", TrafficTable)
         self._chunk_ids.clear()
 
         rows = query(
@@ -119,7 +129,7 @@ class TrafficScreen(Screen):
         )
         if not rows:
             return
-        table = self.query_one("#traffic-table", DataTable)
+        table = self.query_one("#traffic-table", TrafficTable)
         was_at_last = table.cursor_row == len(self._chunk_ids) - 1
         for chunk_id, direction, recorded_at, size in rows:
             self._chunk_ids.append(chunk_id)

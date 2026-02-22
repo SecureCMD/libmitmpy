@@ -146,7 +146,13 @@ class Encripton:
 
         # Try to check if this is TLS/SSL
         # Parse the SNI / ALPN here and get the protocol and the hostname...
-        sni, alpn_list = tls.get_sni_alpn(client_socket)
+        try:
+            sni, alpn_list = tls.get_sni_alpn(client_socket)
+        except ConnectionResetError:
+            logger.debug("Client dropped connection before sending data for %s:%s", dst_addr, dst_port)
+            client_socket.close()
+            target_socket.close()
+            return
         if not sni:
             logger.info(f"Creating plain text pipe for sockets [{client_socket}, {target_socket}]")
             metainfo = socks.PipeMetaInfo(
