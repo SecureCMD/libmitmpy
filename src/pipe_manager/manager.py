@@ -245,6 +245,4 @@ class PipeManager:
         for pipe in list(self.pipes.keys()):
             self.stop(pipe)
 
-        logger.debug("Draining all pipes...")
-        self._event_queue.join()
         self._dispatcher.join()

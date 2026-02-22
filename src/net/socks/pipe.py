@@ -74,6 +74,14 @@ class Pipe(EventMixin):
 
     def stop(self):
         self._halt = True
+        try:
+            self._downstream.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            self._upstream.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
 
     def close_downstream(self):
         self._downstream.shutdown(socket.SHUT_WR)

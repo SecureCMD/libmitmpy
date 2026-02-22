@@ -225,9 +225,12 @@ class Encripton:
                 logger.info("Waiting for connection...")
                 client_socket, addr = self.main_socket.accept()
                 logger.info(f"Got connection from {addr}")
-            except socket.error:
+            except KeyboardInterrupt:
                 self.stop()
-                continue
+                break
+            except (socket.error, OSError):
+                self.stop()
+                break
 
             AutoThread(target=self.handle_client, args=[client_socket], name="<->")
 
