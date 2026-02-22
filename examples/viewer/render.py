@@ -4,7 +4,7 @@ MAX_DISPLAY_BYTES = 16 * 1024  # 16 KiB — truncate beyond this to keep the UI 
 
 
 def hex_dump(data: bytes) -> str:
-    COLS = 32  # bytes per row
+    COLS = 16  # bytes per row
     GROUP = 8  # bytes per space-separated group within a row
     lines = []
     for i in range(0, len(data), COLS):

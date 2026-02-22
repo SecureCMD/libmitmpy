@@ -40,6 +40,7 @@ class TrafficScreen(Screen):
     #data-view {
         height: 1fr;
         padding: 0 1;
+        overflow-x: auto;
     }
     """
 
