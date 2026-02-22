@@ -1,6 +1,10 @@
+import ctypes
 import inspect
 import logging
+import os
+import platform
 import socket
+import sys
 import uuid
 from pathlib import Path
 from typing import Callable, Optional, Tuple, Type
@@ -29,6 +33,15 @@ class Encripton:
         data_dir: Path,
         handler: Optional[Type[ConnectionHandler] | Callable[[ConnectionMeta], Optional[Type[ConnectionHandler]]]] = None,
     ):
+        if platform.system() == "Windows":
+            if not ctypes.windll.shell32.IsUserAnAdmin():
+                print("This program must be run as Administrator.", file=sys.stderr)
+                sys.exit(1)
+        else:
+            if os.geteuid() != 0:
+                print("This program must be run as root.", file=sys.stderr)
+                sys.exit(1)
+
         self._halt = False
         self.local_addr = local_addr
         self.local_port = local_port
