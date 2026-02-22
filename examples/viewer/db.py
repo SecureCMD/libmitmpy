@@ -13,6 +13,19 @@ def _regexp(pattern: str, value) -> bool:
         return False
 
 
+def execute(sql: str, params: tuple = ()) -> bool:
+    """Run a write query against the database; returns True on success."""
+    if not DB_PATH.exists():
+        return False
+    try:
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            conn.execute(sql, params)
+            conn.commit()
+        return True
+    except sqlite3.Error:
+        return False
+
+
 def query(sql: str, params: tuple = ()) -> list:
     """Run a read-only query against the database; returns [] on any error."""
     if not DB_PATH.exists():

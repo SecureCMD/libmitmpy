@@ -6,7 +6,8 @@ from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header
 
-from db import query
+from clear_modal import ClearModal
+from db import execute, query
 from filter_modal import FilterModal
 from quit_modal import QuitModal
 from traffic_screen import TrafficScreen
@@ -19,6 +20,7 @@ class PipesScreen(Screen):
         Binding("r", "refresh", "Refresh"),
         Binding("f", "toggle_follow", "Follow"),
         Binding("/", "open_filter", "Filter"),
+        Binding("c", "clear_confirm", "Clear"),
         Binding("escape", "quit_confirm", "Quit"),
     ]
     CSS = """
@@ -160,6 +162,18 @@ class PipesScreen(Screen):
         self.sub_title = "Filters: " + " | ".join(parts)
 
     # ------------------------------------------------------------------
+
+    def action_clear_confirm(self) -> None:
+        def _on_dismiss(confirmed: bool) -> None:
+            if not confirmed:
+                return
+            execute("DELETE FROM traffic")
+            execute("DELETE FROM pipes")
+            self._last_pipe_id = 0
+            self._load_pipes()
+            self.notify("Cleared", timeout=1.5)
+
+        self.app.push_screen(ClearModal(), _on_dismiss)
 
     def action_refresh(self) -> None:
         self._load_pipes()
