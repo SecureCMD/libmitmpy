@@ -35,6 +35,7 @@ class PipesScreen(Screen):
         self._last_traffic_id: int = 0
         self._filters: dict = {}
         self._chunks_col_key = None
+        self._last_update_col_key = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -43,7 +44,8 @@ class PipesScreen(Screen):
 
     def on_mount(self) -> None:
         table = self.query_one("#pipes-table", DataTable)
-        cols = table.add_columns("Time", "PID", "Process", "Address", "Port", "Enc", "SNI", "ALPN", "Chunks")
+        cols = table.add_columns("First conn", "Last update", "PID", "Process", "Address", "Port", "Enc", "SNI", "ALPN", "Chunks")
+        self._last_update_col_key = cols[1]
         self._chunks_col_key = cols[-1]
         self._load_pipes()
         self.set_interval(0.5, self._poll_pipes)
@@ -96,24 +98,27 @@ class PipesScreen(Screen):
                    p.encrypted,
                    p.sni,
                    p.alpn,
-                   COUNT(t.id) AS chunks
+                   COUNT(t.id) AS chunks,
+                   MAX(t.recorded_at) AS last_update
             FROM pipes p
             LEFT JOIN traffic t ON t.pipe_id = p.id
             WHERE {where}
             GROUP BY p.id
-            ORDER BY p.created_at ASC
+            ORDER BY COALESCE(MAX(t.recorded_at), p.created_at) ASC
         """
         return sql, tuple(params)
 
     def _append_rows(self, table: DataTable, rows: list) -> int:
         """Add rows to the table, return the count of rows added."""
-        for pipe_id, created_at, pid, process_name, dst_addr, dst_port, encrypted, sni, alpn, chunks in rows:
+        for pipe_id, created_at, pid, process_name, dst_addr, dst_port, encrypted, sni, alpn, chunks, last_update in rows:
             self._pipe_ids.append(pipe_id)
             self._last_pipe_id = max(self._last_pipe_id, pipe_id)
-            ts = datetime.fromtimestamp(created_at).strftime("%H:%M:%S")
+            first_conn = datetime.fromtimestamp(created_at).strftime("%H:%M:%S")
+            last_update_str = datetime.fromtimestamp(last_update).strftime("%H:%M:%S") if last_update else "—"
             enc_label = Text("🔒 yes", style="green") if encrypted else Text("   no", style="dim")
             table.add_row(
-                ts,
+                first_conn,
+                last_update_str,
                 str(pid) if pid is not None else "—",
                 process_name or "—",
                 dst_addr,
@@ -153,11 +158,11 @@ class PipesScreen(Screen):
             if self._follow:
                 table.move_cursor(row=len(self._pipe_ids) - 1)
 
-        # For each pipe that received new traffic, get its total chunk count and
-        # the highest new traffic id (to advance the watermark) in one query.
+        # For each pipe that received new traffic, get its total chunk count,
+        # latest recorded_at, and the highest new traffic id in one query.
         count_rows = query(
             """
-            SELECT t.pipe_id, COUNT(t.id), MAX(new_t.max_id)
+            SELECT t.pipe_id, COUNT(t.id), MAX(new_t.max_id), MAX(t.recorded_at)
             FROM traffic t
             INNER JOIN (
                 SELECT pipe_id, MAX(id) AS max_id
@@ -174,8 +179,10 @@ class PipesScreen(Screen):
 
         self._last_traffic_id = max(row[2] for row in count_rows)
         pipe_id_set = set(self._pipe_ids)
-        for pipe_id, total, _ in count_rows:
+        for pipe_id, total, _, last_update in count_rows:
             if pipe_id in pipe_id_set:
+                last_update_str = datetime.fromtimestamp(last_update).strftime("%H:%M:%S") if last_update else "—"
+                table.update_cell(str(pipe_id), self._last_update_col_key, last_update_str)
                 table.update_cell(str(pipe_id), self._chunks_col_key, str(total))
 
     # ------------------------------------------------------------------
