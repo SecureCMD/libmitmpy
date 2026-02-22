@@ -1,13 +1,62 @@
 from datetime import datetime
 
 from rich.text import Text
+from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Header
+from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen, Screen
+from textual.widgets import Button, DataTable, Footer, Header, Label
+from traffic_screen import TrafficScreen
 
 from db import query
-from traffic_screen import TrafficScreen
+
+
+class QuitModal(ModalScreen[bool]):
+    CSS = """
+    QuitModal {
+        align: center middle;
+    }
+    #dialog {
+        padding: 1 2;
+        width: 36;
+        height: auto;
+        border: solid $accent;
+        background: $surface;
+    }
+    #dialog-title {
+        width: 1fr;
+        content-align: center middle;
+        margin-bottom: 1;
+    }
+    #dialog-buttons {
+        width: 1fr;
+        align: center middle;
+        height: auto;
+
+    }
+    #dialog-buttons Button {
+        margin: 0 1;
+        width: 10;
+        text-align: center;
+        content-align: center middle;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Label("Quit the viewer?", id="dialog-title")
+            with Horizontal(id="dialog-buttons"):
+                yield Button("Yes", variant="error", id="btn-yes")
+                yield Button("No", variant="primary", id="btn-no")
+
+    @on(Button.Pressed, "#btn-yes")
+    def _yes(self) -> None:
+        self.dismiss(True)
+
+    @on(Button.Pressed, "#btn-no")
+    def _no(self) -> None:
+        self.dismiss(False)
 
 
 class PipesScreen(Screen):
@@ -16,7 +65,7 @@ class PipesScreen(Screen):
         Binding("right", "select_pipe", "Inspect", show=False),
         Binding("r", "refresh", "Refresh"),
         Binding("f", "toggle_follow", "Follow"),
-        Binding("q", "app.quit", "Quit"),
+        Binding("escape", "quit_confirm", "Quit"),
     ]
     CSS = """
     DataTable { height: 1fr; }
@@ -103,6 +152,13 @@ class PipesScreen(Screen):
 
     def action_refresh(self) -> None:
         self._load_pipes()
+
+    def action_quit_confirm(self) -> None:
+        def _on_dismiss(confirmed: bool) -> None:
+            if confirmed:
+                self.app.exit()
+
+        self.app.push_screen(QuitModal(), _on_dismiss)
 
     def action_toggle_follow(self) -> None:
         self._follow = not self._follow
