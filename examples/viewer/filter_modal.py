@@ -31,7 +31,9 @@ class FilterModal(ModalScreen):
     }
     .filter-label {
         width: 10;
+        height: 100%;
         content-align: left middle;
+        text-align: left;
     }
     .filter-select {
         width: 16;
