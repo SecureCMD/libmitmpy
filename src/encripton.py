@@ -171,7 +171,7 @@ class Encripton:
             try:
                 client_conn.wrap_local(cert_pem=cert_pem, key_pem=key_pem, ca_cert_pem=ca_cert_pem)
             except Exception:
-                logger.debug("TLS handshake with client failed for %s (client dropped the connection)", sni, exc_info=True)
+                logger.debug("TLS handshake with client failed for %s (client dropped the connection)", sni)
                 client_conn.close()
                 target_socket.close()
                 return
