@@ -32,7 +32,9 @@ class PipesScreen(Screen):
         self._pipe_ids: list[int] = []
         self._follow: bool = False
         self._last_pipe_id: int = 0
+        self._last_traffic_id: int = 0
         self._filters: dict = {}
+        self._chunks_col_key = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -41,7 +43,8 @@ class PipesScreen(Screen):
 
     def on_mount(self) -> None:
         table = self.query_one("#pipes-table", DataTable)
-        table.add_columns("Time", "PID", "Process", "Address", "Port", "Enc", "SNI", "ALPN", "Chunks")
+        cols = table.add_columns("Time", "PID", "Process", "Address", "Port", "Enc", "SNI", "ALPN", "Chunks")
+        self._chunks_col_key = cols[-1]
         self._load_pipes()
         self.set_interval(0.5, self._poll_pipes)
 
@@ -119,6 +122,7 @@ class PipesScreen(Screen):
                 sni  or "—",
                 alpn or "—",
                 str(chunks),
+                key=str(pipe_id),
             )
         return len(rows)
 
@@ -132,19 +136,47 @@ class PipesScreen(Screen):
         self._last_pipe_id = 0
         sql, params = self._build_query(0)
         self._append_rows(table, query(sql, params))
+        rows = query("SELECT COALESCE(MAX(id), 0) FROM traffic")
+        self._last_traffic_id = rows[0][0] if rows else 0
         if self._follow and self._pipe_ids:
             table.move_cursor(row=len(self._pipe_ids) - 1)
 
     def _poll_pipes(self) -> None:
-        """Incremental update — only fetches pipes newer than the last seen id."""
-        sql, params = self._build_query(self._last_pipe_id)
-        rows = query(sql, params)
-        if not rows:
-            return
+        """Incremental update — fetch new pipes and update chunk counts for existing ones."""
         table = self.query_one("#pipes-table", DataTable)
-        self._append_rows(table, rows)
-        if self._follow:
-            table.move_cursor(row=len(self._pipe_ids) - 1)
+
+        # Add any new pipes.
+        sql, params = self._build_query(self._last_pipe_id)
+        new_rows = query(sql, params)
+        if new_rows:
+            self._append_rows(table, new_rows)
+            if self._follow:
+                table.move_cursor(row=len(self._pipe_ids) - 1)
+
+        # For each pipe that received new traffic, get its total chunk count and
+        # the highest new traffic id (to advance the watermark) in one query.
+        count_rows = query(
+            """
+            SELECT t.pipe_id, COUNT(t.id), MAX(new_t.max_id)
+            FROM traffic t
+            INNER JOIN (
+                SELECT pipe_id, MAX(id) AS max_id
+                FROM traffic
+                WHERE id > ?
+                GROUP BY pipe_id
+            ) new_t ON new_t.pipe_id = t.pipe_id
+            GROUP BY t.pipe_id
+            """,
+            (self._last_traffic_id,),
+        )
+        if not count_rows:
+            return
+
+        self._last_traffic_id = max(row[2] for row in count_rows)
+        pipe_id_set = set(self._pipe_ids)
+        for pipe_id, total, _ in count_rows:
+            if pipe_id in pipe_id_set:
+                table.update_cell(str(pipe_id), self._chunks_col_key, str(total))
 
     # ------------------------------------------------------------------
 
