@@ -2,10 +2,10 @@ import logging
 from collections import defaultdict
 from queue import Empty, Queue
 from threading import Lock
-from typing import Any
+from typing import Any, Optional
 
 from core import AutoThread
-from interceptors import BaseInterceptor, DummyInterceptor, HTTPInterceptor
+from handlers import ConnectionHandler
 from net.socks import Pipe
 from traffic_logger import TrafficLogger
 
@@ -22,13 +22,9 @@ class PipeManager:
             }
         )
         self._pipes_lock = Lock()
+        self._pipe_handlers: dict[Pipe, ConnectionHandler] = {}
         self._event_queue: Queue[tuple[str, Pipe, dict[str, Any]]] = Queue()
         self._halt = False
-
-        self.interceptors: list[BaseInterceptor] = [
-            DummyInterceptor(),
-            HTTPInterceptor(),
-        ]  # TODO: this should be per pipe
 
         # Start event dispatcher thread
         self._dispatcher = AutoThread(target=self._dispatch_events, name="EventDispatcher")
@@ -54,6 +50,12 @@ class PipeManager:
                     case "pipe_finished":
                         logger.debug("Attempting to stop pipe...")
                         if not self._pending_tasks(pipe):
+                            handler = self._pipe_handlers.pop(pipe, None)
+                            if handler is not None:
+                                try:
+                                    handler.on_disconnect()
+                                except Exception:
+                                    logger.exception("Handler crashed in on_disconnect for pipe %s", pipe)
                             self.stop(pipe)
                             self.pipes.pop(pipe)
                         else:
@@ -83,14 +85,39 @@ class PipeManager:
                                 self._traffic_logger.log_outgoing(pipe, data_chunk)
                             except Exception:
                                 logger.exception("TrafficLogger failed on outgoing data for pipe %s", pipe)
-                        with pipe.outgoing_locked():
-                            for interceptor in self.interceptors:
-                                try:
-                                    interceptor.process_outgoing_data(pipe, **kwargs)
-                                except Exception:
-                                    logger.exception("Interceptor %s crashed on outgoing data", type(interceptor).__name__)
-                            with self._pipes_lock:
-                                self.pipes[pipe]["pending_outgoing"] -= 1
+
+                        eof = kwargs.get("eof", False)
+                        data = data_chunk or b""
+                        handler = self._pipe_handlers.get(pipe)
+
+                        if handler is not None:
+                            try:
+                                result = handler.on_outgoing(data, eof)
+                            except Exception:
+                                logger.exception("Handler crashed in on_outgoing for pipe %s", pipe)
+                                result = None
+
+                            # Clear the pipe buffer — the handler owns processing from here
+                            with pipe.outgoing_locked() as buf:
+                                buf.clear()
+
+                            if result is None:
+                                # Pass through: forward original data unchanged
+                                if data:
+                                    pipe.write_to_upstream(data)
+                            elif result:
+                                # Forward the handler's modified data
+                                pipe.write_to_upstream(result)
+                            # b"" → swallow (handler buffering or intentional drop)
+                        else:
+                            # No handler: pass through directly
+                            with pipe.outgoing_locked() as buf:
+                                if buf:
+                                    pipe.write_to_upstream(bytes(buf))
+                                    buf.clear()
+
+                        with self._pipes_lock:
+                            self.pipes[pipe]["pending_outgoing"] -= 1
 
                     case "incoming_data_available":
                         data_chunk = kwargs.pop("data", None)
@@ -99,14 +126,35 @@ class PipeManager:
                                 self._traffic_logger.log_incoming(pipe, data_chunk)
                             except Exception:
                                 logger.exception("TrafficLogger failed on incoming data for pipe %s", pipe)
-                        with pipe.incoming_locked():
-                            for interceptor in self.interceptors:
-                                try:
-                                    interceptor.process_incoming_data(pipe, **kwargs)
-                                except Exception:
-                                    logger.exception("Interceptor %s crashed on incoming data", type(interceptor).__name__)
-                            with self._pipes_lock:
-                                self.pipes[pipe]["pending_incoming"] -= 1
+
+                        eof = kwargs.get("eof", False)
+                        data = data_chunk or b""
+                        handler = self._pipe_handlers.get(pipe)
+
+                        if handler is not None:
+                            try:
+                                result = handler.on_incoming(data, eof)
+                            except Exception:
+                                logger.exception("Handler crashed in on_incoming for pipe %s", pipe)
+                                result = None
+
+                            with pipe.incoming_locked() as buf:
+                                buf.clear()
+
+                            if result is None:
+                                if data:
+                                    pipe.write_to_downstream(data)
+                            elif result:
+                                pipe.write_to_downstream(result)
+                        else:
+                            with pipe.incoming_locked() as buf:
+                                if buf:
+                                    pipe.write_to_downstream(bytes(buf))
+                                    buf.clear()
+
+                        with self._pipes_lock:
+                            self.pipes[pipe]["pending_incoming"] -= 1
+
                     case _:
                         logger.warning(f"Unknown event type: {event_type}")
 
@@ -140,8 +188,11 @@ class PipeManager:
 
         self._event_queue.put((event_type, pipe, kwargs))
 
-    def add(self, pipe):
+    def add(self, pipe: Pipe, handler: Optional[ConnectionHandler] = None):
         logger.debug(f"Adding pipe {pipe} to pipe manager")
+
+        if handler is not None:
+            self._pipe_handlers[pipe] = handler
 
         logger.debug(f"Subscribing to events of pipe {pipe}")
         for event in [
@@ -154,6 +205,12 @@ class PipeManager:
             pipe.on(event, lambda p, e=event, **kw: self._enqueue_event(e, p, **kw))
 
         self._traffic_logger.register_pipe(pipe)
+
+        if handler is not None:
+            try:
+                handler.on_connect()
+            except Exception:
+                logger.exception("Handler crashed in on_connect for pipe %s", pipe)
 
         logger.info(f"Starting pipe {pipe}")
         pipe.start()

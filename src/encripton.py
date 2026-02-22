@@ -1,10 +1,14 @@
+import inspect
 import logging
 import socket
+import uuid
 from pathlib import Path
+from typing import Callable, Optional, Type
 
 from cert_manager import CertManager
 from core import AutoThread, SafeConnection, SafeSocket
 from db import Database
+from handlers import ConnectionHandler, ConnectionMeta
 from net import socks, tls
 from pipe_manager import PipeManager
 from traffic_logger import TrafficLogger
@@ -15,12 +19,20 @@ logger = logging.getLogger(__name__)
 class Encripton:
     """Manage exit status"""
 
-    def __init__(self, local_addr: str, local_port, app_id: str, data_dir: Path):
+    def __init__(
+        self,
+        local_addr: str,
+        local_port,
+        app_id: str,
+        data_dir: Path,
+        handler: Optional[Type[ConnectionHandler] | Callable[[ConnectionMeta], Optional[Type[ConnectionHandler]]]] = None,
+    ):
         self._halt = False
         self.local_addr = local_addr
         self.local_port = local_port
         self.app_id = app_id
         self.data_dir = data_dir
+        self._handler_selector = self._resolve_selector(handler)
 
         # Shared database (certs + traffic)
         self.db = Database(data_dir / "data.db")
@@ -55,6 +67,26 @@ class Encripton:
             self.main_socket.close()
             self._halt = True
             raise Exception
+
+    @staticmethod
+    def _resolve_selector(handler):
+        """Normalise the handler argument into a selector callable.
+
+        Accepts:
+          - None                    → every connection is passed through unchanged
+          - A ConnectionHandler subclass → every connection uses that class
+          - A callable (meta) → Type | None → per-connection routing
+        """
+        if handler is None:
+            return lambda meta: None
+        if inspect.isclass(handler) and issubclass(handler, ConnectionHandler):
+            return lambda meta: handler
+        if callable(handler):
+            return handler
+        raise TypeError(
+            f"handler must be a ConnectionHandler subclass or a callable "
+            f"(ConnectionMeta) -> Type[ConnectionHandler] | None, got {type(handler)}"
+        )
 
     def handle_client(self, client_socket: SafeSocket):
         """
@@ -122,7 +154,25 @@ class Encripton:
             )
             pipe = socks.Pipe(downstream=client_conn, upstream=target_conn, metainfo=metainfo)
 
-        self.pipemanager.add(pipe)
+        # Build ConnectionMeta and resolve the handler for this connection
+        dst_addr_str = dst_addr.decode("utf-8", errors="replace") if isinstance(dst_addr, bytes) else dst_addr
+        meta = ConnectionMeta(
+            id=str(uuid.uuid4()),
+            dst_addr=dst_addr_str,
+            dst_port=dst_port,
+            sni=sni,
+            alpn=list(alpn_list) if alpn_list else [],
+            is_tls=sni is not None,
+        )
+
+        handler_class = self._handler_selector(meta)
+        handler_instance = None
+        if handler_class is not None:
+            handler_instance = handler_class()
+            handler_instance.meta = meta
+            handler_instance._pipe = pipe
+
+        self.pipemanager.add(pipe, handler_instance)
 
     def start(self):
         while not self._halt:
