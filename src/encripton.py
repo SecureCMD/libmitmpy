@@ -3,7 +3,9 @@ import logging
 import socket
 import uuid
 from pathlib import Path
-from typing import Callable, Optional, Type
+from typing import Callable, Optional, Tuple, Type
+
+import psutil
 
 from cert_manager import CertManager
 from core import AutoThread, SafeConnection, SafeSocket
@@ -88,6 +90,17 @@ class Encripton:
             f"(ConnectionMeta) -> Type[ConnectionHandler] | None, got {type(handler)}"
         )
 
+    @staticmethod
+    def _get_client_process(client_socket: SafeSocket) -> Tuple[Optional[int], Optional[str]]:
+        try:
+            _, src_port = client_socket.getpeername()
+            for conn in psutil.net_connections(kind="tcp"):
+                if conn.laddr.port == src_port and conn.pid is not None:
+                    return conn.pid, psutil.Process(conn.pid).name()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+            pass
+        return None, None
+
     def handle_client(self, client_socket: SafeSocket):
         """
         The client connects to the server and sends a header that contains the
@@ -95,6 +108,7 @@ class Encripton:
         must either reject the connection or reply with the selected verion and
         auth method.
         """
+        pid, process_name = self._get_client_process(client_socket)
         client = socks.Client(client_socket)
         handshake = client.handshake()
 
@@ -125,6 +139,8 @@ class Encripton:
             metainfo = socks.PipeMetaInfo(
                 dst_addr=dst_addr,
                 dst_port=dst_port,
+                pid=pid,
+                process_name=process_name,
             )
             pipe = socks.Pipe(downstream=client_socket, upstream=target_socket, metainfo=metainfo)
         else:
@@ -163,6 +179,8 @@ class Encripton:
             sni=sni,
             alpn=list(alpn_list) if alpn_list else [],
             is_tls=sni is not None,
+            pid=pid,
+            process_name=process_name,
         )
 
         handler_class = self._handler_selector(meta)

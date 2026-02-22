@@ -10,3 +10,5 @@ class ConnectionMeta:
     sni: Optional[str]
     alpn: List[str]
     is_tls: bool
+    pid: Optional[int]
+    process_name: Optional[str]
