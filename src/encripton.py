@@ -168,11 +168,23 @@ class Encripton:
 
             # wrap client socket with fake cert
             client_conn = SafeConnection(client_socket)
-            client_conn.wrap_local(cert_pem=cert_pem, key_pem=key_pem, ca_cert_pem=ca_cert_pem)
+            try:
+                client_conn.wrap_local(cert_pem=cert_pem, key_pem=key_pem, ca_cert_pem=ca_cert_pem)
+            except Exception:
+                logger.debug("TLS handshake with client failed for %s (client dropped the connection)", sni, exc_info=True)
+                client_conn.close()
+                target_socket.close()
+                return
 
             # wrap server socket with default client-side SSL
             target_conn = SafeConnection(target_socket)
-            target_conn.wrap_target(sni)
+            try:
+                target_conn.wrap_target(sni)
+            except Exception:
+                logger.debug("TLS handshake with target failed for %s", sni, exc_info=True)
+                client_conn.close()
+                target_conn.close()
+                return
 
             logger.info(f"Creating secure pipe for sockets [{client_conn}, {target_conn}]")
             metainfo = socks.PipeMetaInfo(
