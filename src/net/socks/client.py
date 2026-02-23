@@ -69,28 +69,27 @@ class Client:
         try:
             header = self.socket.recvall(4)
             ver, cmd, rsv, atyp = header[0:1], header[1:2], header[2:3], header[3:4]
+
+            if ver != VER or cmd != CMD_CONNECT or rsv != b"\x00":
+                return b"", 0
+
+            if atyp == ATYP_IPV4:
+                target = self.socket.recvall(6)
+                dst_addr = socket.inet_ntoa(target[:-2])
+                dst_port = unpack(">H", target[-2:])[0]
+            elif atyp == ATYP_DOMAINNAME:
+                size = self.socket.recvall(1)
+                target = self.socket.recvall(size[0] + 2)
+                dst_addr = target[0:-2]
+                dst_port = unpack(">H", target[-2:])[0]
+            elif atyp == ATYP_IPV6:
+                target = self.socket.recvall(18)
+                dst_addr = socket.inet_ntop(socket.AF_INET6, target[:16])
+                dst_port = unpack(">H", target[16:])[0]
+            else:
+                return b"", 0
         except ConnectionResetError:
-            if self.socket != 0:
-                self.socket.close()
-            return b"", 0
-
-        if ver != VER or cmd != CMD_CONNECT or rsv != b"\x00":
-            return b"", 0
-
-        if atyp == ATYP_IPV4:
-            target = self.socket.recvall(6)
-            dst_addr = socket.inet_ntoa(target[:-2])
-            dst_port = unpack(">H", target[-2:])[0]
-        elif atyp == ATYP_DOMAINNAME:
-            size = self.socket.recvall(1)
-            target = self.socket.recvall(size[0] + 2)
-            dst_addr = target[0:-2]
-            dst_port = unpack(">H", target[-2:])[0]
-        elif atyp == ATYP_IPV6:
-            target = self.socket.recvall(18)
-            dst_addr = socket.inet_ntop(socket.AF_INET6, target[:16])
-            dst_port = unpack(">H", target[16:])[0]
-        else:
+            self.socket.close()
             return b"", 0
 
         return dst_addr, dst_port

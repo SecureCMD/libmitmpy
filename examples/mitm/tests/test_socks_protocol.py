@@ -323,17 +323,7 @@ class TestGetRequestDetails:
         assert dst_addr == b""
 
     def test_connection_reset_mid_address(self):
-        """
-        Client closes socket right after the 4-byte header (no address data).
-
-        BUG: get_request_details() only wraps the initial recvall(4) in a
-        try/except ConnectionResetError; the subsequent recvall() calls for
-        the address bytes are not protected.  When the client disconnects here
-        the unhandled ConnectionResetError propagates to the caller.
-
-        This test documents the current (broken) behaviour so that fixing the
-        bug in client.py makes this test fail and triggers an update.
-        """
+        """Client closes socket right after the 4-byte header (no address data)."""
         server_sock, client_sock = self._pair()
 
         def send():
@@ -342,9 +332,10 @@ class TestGetRequestDetails:
 
         t = threading.Thread(target=send, daemon=True)
         t.start()
-        with pytest.raises(ConnectionResetError):
-            Client(server_sock).get_request_details()
+        dst_addr, dst_port = Client(server_sock).get_request_details()
         t.join(timeout=3)
+
+        assert dst_addr == b""
 
     def test_garbage_bytes(self):
         """Completely random/garbage payload must not crash or hang."""
