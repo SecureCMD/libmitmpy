@@ -33,5 +33,5 @@ class EventMixin:
         for cb in callbacks:
             try:
                 cb(*args, **kwargs)
-            except Exception:
-                logger.exception(f"Callback '{cb}' of '{event}' crashed")
+            except Exception as ex:
+                logger.error(f"Callback '{cb}' of '{event}' crashed: {ex}")

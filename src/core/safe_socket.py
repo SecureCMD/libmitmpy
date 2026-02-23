@@ -27,7 +27,7 @@ class SafeSocket:
             _socket.settimeout(None)
             _socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         except socket.error:
-            logger.exception("Failed to create socket")
+            logger.error("Failed to create socket")
             raise Exception
         return _socket
 

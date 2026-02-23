@@ -58,8 +58,8 @@ class PipeManager:
                             if handler is not None:
                                 try:
                                     handler.on_disconnect()
-                                except Exception:
-                                    logger.exception("Handler crashed in on_disconnect for pipe %s", pipe)
+                                except Exception as ex:
+                                    logger.error(f"Handler crashed in on_disconnect for pipe {pipe}: {ex}")
                             self.stop(pipe)
                             self.pipes.pop(pipe)
                         else:
@@ -88,8 +88,8 @@ class PipeManager:
                             if data_chunk is not None:
                                 try:
                                     self._traffic_logger.log_outgoing(pipe, data_chunk)
-                                except Exception:
-                                    logger.exception("TrafficLogger failed on outgoing data for pipe %s", pipe)
+                                except Exception as ex:
+                                    logger.error(f"TrafficLogger failed on outgoing data for pipe {pipe}: {ex}")
 
                             eof = kwargs.get("eof", False)
                             data = data_chunk or b""
@@ -98,8 +98,8 @@ class PipeManager:
                             if handler is not None:
                                 try:
                                     result = handler.on_outgoing(data, eof)
-                                except Exception:
-                                    logger.exception("Handler crashed in on_outgoing for pipe %s", pipe)
+                                except Exception as ex:
+                                    logger.error(f"Handler crashed in on_outgoing for pipe {pipe}: {ex}")
                                     result = None
 
                                 # Clear the pipe buffer — the handler owns processing from here
@@ -120,8 +120,8 @@ class PipeManager:
                                     if buf:
                                         pipe.write_to_upstream(bytes(buf))
                                         buf.clear()
-                        except Exception:
-                            logger.exception("Error processing outgoing_data_available for pipe %s", pipe)
+                        except Exception as ex:
+                            logger.error(f"Error processing outgoing_data_available for pipe {pipe}: {ex}")
                         finally:
                             with self._pipes_lock:
                                 self.pipes[pipe]["pending_outgoing"] -= 1
@@ -132,8 +132,8 @@ class PipeManager:
                             if data_chunk is not None:
                                 try:
                                     self._traffic_logger.log_incoming(pipe, data_chunk)
-                                except Exception:
-                                    logger.exception("TrafficLogger failed on incoming data for pipe %s", pipe)
+                                except Exception as ex:
+                                    logger.error(f"TrafficLogger failed on incoming data for pipe {pipe}: {ex}")
 
                             eof = kwargs.get("eof", False)
                             data = data_chunk or b""
@@ -142,8 +142,8 @@ class PipeManager:
                             if handler is not None:
                                 try:
                                     result = handler.on_incoming(data, eof)
-                                except Exception:
-                                    logger.exception("Handler crashed in on_incoming for pipe %s", pipe)
+                                except Exception as ex:
+                                    logger.error(f"Handler crashed in on_incoming for pipe {pipe}: {ex}")
                                     result = None
 
                                 with pipe.incoming_locked() as buf:
@@ -159,8 +159,8 @@ class PipeManager:
                                     if buf:
                                         pipe.write_to_downstream(bytes(buf))
                                         buf.clear()
-                        except Exception:
-                            logger.exception("Error processing incoming_data_available for pipe %s", pipe)
+                        except Exception as ex:
+                            logger.error(f"Error processing incoming_data_available for pipe {pipe}: {ex}")
                         finally:
                             with self._pipes_lock:
                                 self.pipes[pipe]["pending_incoming"] -= 1
@@ -170,7 +170,7 @@ class PipeManager:
 
             except Exception as e:
                 if not isinstance(e, TimeoutError):
-                    logger.exception("Error dispatching event")
+                    logger.error("Error dispatching event")
             finally:
                 self._event_queue.task_done()
                 pipe = None  # this will force the GC to collect the pipe object
@@ -218,7 +218,7 @@ class PipeManager:
             try:
                 handler.on_connect()
             except Exception:
-                logger.exception("Handler crashed in on_connect for pipe %s", pipe)
+                logger.error("Handler crashed in on_connect for pipe {pipe}: {ex}")
 
         logger.info(f"Starting pipe {pipe}")
         pipe.start()
